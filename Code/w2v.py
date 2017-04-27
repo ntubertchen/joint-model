@@ -10,8 +10,9 @@ class DataPrepare(object):
     self.worddict,self.dict_dim = self.get_glove(path[0])
     
     self.encoded,self.reverse = self.set_word2vec(path[1])
-    self.slotvalue = self.get_labelvalue(path[2])
-    self.intentvalue = self.get_labelvalue(path[3])
+    self.slotvalue = self.get_value(path[2])
+    self.intentvalue = self.get_value(path[3])
+    self.all_in,self.all_out,self.all_int = self.get_batches()
 
   def get_glove(self,GloVe):
     d = {}
@@ -69,41 +70,68 @@ class DataPrepare(object):
       training_set.append(batch)
     return training_set, rev_set
 
-  def get_labelvalue(self,label_p):
+  def get_value(self,label_p):
     training_set = []
     error = open('error','w')
     with open(label_p,'r') as f:
       for line in f:
+        line = line.split('***next***')
         batch = []
-        l = line.strip().split()
-        for word in l:
-          word = word.strip()
-          if word in self.slotdict:
-            vec = np.zeros(self.slot_dim)
-            vec[self.slotdict[word]] = 1
-            batch.append(vec)
-          elif word in self.intentdict:
-            vec = np.zeros(self.intent_dim)
-            vec[self.intentdict[word]] = 1
-            batch.append(vec)
-          else:
-            batch.append(self.worddict['<unk>'])
-            error.write(word+'\n')
-            print ("error")
+        for i in range(len(line) - 1):# 0 1 2 3 empty
+          batch.append(self.get_labelvalue(line[i]))
         training_set.append(batch)
     return training_set
 
-  def get_trainbatch(self):
-   random.seed(self.seed)
-   if self.seed > 99999999:
-     self.seed = random.random()
-   self.seed += 100
-   index = random.randint(0,len(self.encoded) - 1)
-   sentence = self.encoded[index]
-   slot = self.slotvalue[index]
-   for _ in range(self.maxlength - len(self.encoded[index][3])):
-    slot.append(np.zeros(self.slot_dim))
-   for i in range(len(sentence)):
-    for _ in range(self.maxlength - len(sentence[i])):
-      sentence[i].append(np.zeros(200))
-   return sentence,slot,self.intentvalue[index]
+  def get_labelvalue(self,out_sentence):
+    batch = []
+    l = out_sentence.strip().split()
+    for word in l:
+      word = word.strip()
+      if word in self.slotdict:
+        vec = np.zeros(self.slot_dim)
+        vec[self.slotdict[word]] = 1
+        batch.append(vec)
+      elif word in self.intentdict:
+        vec = np.zeros(self.intent_dim)
+        vec[self.intentdict[word]] = 1
+        batch.append(vec)
+      else:
+        batch.append(self.worddict['<unk>'])
+        error.write(word+'\n')
+        print ("error")
+    return batch
+
+  # def get_trainbatch(self):   
+  #  random.seed(self.seed)
+  #  if self.seed > 99999999:
+  #    self.seed = random.random()
+  #  self.seed += 100
+  #  index = random.randint(0,len(self.encoded) - 1)
+  #  sentence = self.encoded[index]
+  #  slot = self.slotvalue[index]
+  #  for _ in range(self.maxlength - len(self.encoded[index][3])):
+  #   slot.append(np.zeros(self.slot_dim))
+  #  assert len(slot) == self.maxlength
+  #  for i in range(len(sentence)):
+  #   for _ in range(self.maxlength - len(sentence[i])):
+  #     sentence[i].append(np.zeros(200))
+  #  return sentence,slot,self.intentvalue[index]
+  def get_batches(self):
+    seq_in = []
+    seq_out = []
+    intent = []
+    for sentence in self.encoded:
+      for i in range(len(sentence)):
+        for _ in range(self.maxlength - len(sentence[i])):
+          sentence[i].append(np.zeros(200))
+      seq_in.append(sentence)
+    for out in self.slotvalue:
+      for i in range(len(out)):
+        for _ in range(self.maxlength - len(out[i])):
+          out[i].append(np.zeros(self.slot_dim))
+      seq_out.append(out)
+    intent = self.intentvalue
+    return seq_in,seq_out,intent
+
+  def get_all(self):
+    return self.all_in,self.all_out,self.all_int

@@ -32,9 +32,9 @@ parser.add_argument('--slot', action='store_false',help='slot training')
 args = parser.parse_args()
 
 
-path = ["../GloVe/glove.6B.200d.txt" , "../Guide/Data/seq.in" , "../Guide/Data/seq.out" , "../Guide/Data/intent"]
-slotpath = '../Guide/Data/slot_list'
-intentpath = '../Guide/Data/intent_list'
+path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/seq.in" , "../All/Data/seq.out" , "../All/Data/intent"]
+slotpath = '../All/Data/slot_list'
+intentpath = '../All/Data/intent_list'
 Data = DataPrepare(path,slotpath,intentpath)
 
 # Parameters
