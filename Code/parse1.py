@@ -88,7 +88,7 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 	pref_tag = []
 	pref_int = []
 	empty = "Empty"
-	for _ in range(7):
+	for _ in range(4):
 		pref.append(empty)
 		pref_tag.append("O")
 		pref_int.append("None-None")
@@ -137,7 +137,10 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 			pref = pref[1:]
 			pref_tag = pref_tag[1:]
 			pref_int = pref_int[1:]
-			pref.append(final_line)
+			if final_line.strip() == "":
+				pref.append("Empty")
+			else:
+				pref.append(final_line)
 			pref_tag.append(final_tag)
 			pref_int.append(intent)
 			if speaker_info["speaker"] == "Tourist" and args.tourist != True and args.all != True:
@@ -178,12 +181,11 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 				f7.write('\n')
 				f11.write('\n')
 			for s in pref:
-					f4.write(s + " ***next*** ")
+					f4.write(s+" ")
 			for s in pref_tag:
-					f8.write(s + " ***next*** ")
+					f8.write(s+" ")
 			for s in pref_int:
-					f12.write(s + " ***next*** ")
-			f4.write(speaker_info["speaker"])					
+					f12.write(s+" ")			
 			f4.write('\n')
 			f8.write('\n')
 			f12.write('\n')
