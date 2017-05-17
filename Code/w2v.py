@@ -52,7 +52,7 @@ class DataPrepare(object):
       #print line
       line = line.strip().split('***next***')
       rev = []
-      for i in range(len(line)-1):
+      for i in range(len(line)-1):# 0 ***next*** 1 ***next*** 2 ***next*** 3 ***next*** Guide
         l = line[i].lower()
         rev.append(l)
         l = l.strip().split()
@@ -66,6 +66,7 @@ class DataPrepare(object):
             sen.append(self.worddict['<unk>'])
             unkbook.write(word+'\n')
         batch.append(sen)
+      batch.append(line[len(line)-1].strip())
       rev_set.append(rev)
       training_set.append(batch)
     return training_set, rev_set
@@ -120,11 +121,13 @@ class DataPrepare(object):
     seq_in = []
     seq_out = []
     intent = []
-    for sentence in self.encoded:
-      for i in range(len(sentence)):
+    #5x30x200
+    for sentence in self.encoded:#4sentence + guide
+      for i in range(len(sentence)-1):#each sen
         for _ in range(self.maxlength - len(sentence[i])):
           sentence[i].append(np.zeros(200))
       seq_in.append(sentence)
+    #4x30x350
     for out in self.slotvalue:
       for i in range(len(out)):
         for _ in range(self.maxlength - len(out[i])):

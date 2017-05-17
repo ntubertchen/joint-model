@@ -40,7 +40,7 @@ t_path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/test/seq.in" , "../All/Dat
 slotpath = '../All/Data/slot_list'
 intentpath = '../All/Data/intent_list'
 Data = DataPrepare(path,slotpath,intentpath)
-t_data = Data
+t_data = DataPrepare(t_path,slotpath,intentpath)
 # Parameters
 learning_rate = 0.0001
 epoc = 10
