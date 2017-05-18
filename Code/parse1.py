@@ -53,7 +53,6 @@ def parse_tagging(sentences):
 				for j in range(tagwords_length-1):
 					tmp_n.append(offset+j+1)
 					tmp_taggings.append('I-' + tmp_tag)
-			#print tmp_taggings
 			taggings.append(tmp_taggings)
 			n.append(tmp_n)
 		else:
@@ -70,16 +69,11 @@ def parse_tagging(sentences):
 				c += 1
 			else:
 				tmp_tags += 'O '
-		"""if (n[i] != [-1]):
-			print i
-			print taggings[i]
-			print final_lines[i]
-			print tmp_tags"""
 		final_tags = tmp_tags
 
 	return final_lines, final_tags
 
-def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12):
+def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15):
 	with open(json_dir + '/label.json', 'r') as jsonfile:
 		data = json.load(jsonfile)
 	sentences = []
@@ -87,11 +81,13 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 	pref = []
 	pref_tag = []
 	pref_int = []
+	pref_info = []
 	empty = "Empty"
-	for _ in range(4):
+	for _ in range(7):
 		pref.append(empty)
 		pref_tag.append("O")
-		pref_int.append("None-None")
+		pref_int.append("NONE-NONE")
+		pref_info.append(empty)
 	for line in data["utterances"]:
 		speaker_info = speaker_list[counter]
 		counter += 1
@@ -115,7 +111,7 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 			# 	sentence += attr + " "
 			intent = ""
 			if line["speech_act"][i]["act"] == "":
-				intent = "None"
+				intent = "NONE"
 			else:
 				intent = line["speech_act"][i]["act"].strip()
 			for attr in line["speech_act"][i]["attributes"]:
@@ -123,7 +119,7 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 				# if attr == "HOW_TO ":
 				# 	print "ass"
 				if attr == "":
-					attr = 'None'
+					attr = 'NONE'
 				intent += "-" + attr
 
 			# sentence += line["speech_act"][i]["act"] + " "
@@ -137,16 +133,14 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 			pref = pref[1:]
 			pref_tag = pref_tag[1:]
 			pref_int = pref_int[1:]
+			pref_info = pref_info[1:]
 			if final_line.strip() == "":
 				pref.append("Empty")
 			else:
 				pref.append(final_line)
 			pref_tag.append(final_tag)
 			pref_int.append(intent)
-			if speaker_info["speaker"] == "Tourist" and args.tourist != True and args.all != True:
-				continue
-			elif speaker_info["speaker"] == "Guide" and args.guide != True and args.all != True:
-				continue
+			pref_info.append(speaker_info["speaker"])
 			if random.random() < 0.7:
 				for s in pref:
 					f1.write(s + " ***next*** ")
@@ -154,21 +148,25 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 					f5.write(s + " ***next*** ")
 				for s in pref_int:
 					f9.write(s + " ***next*** ")
-				f1.write(speaker_info["speaker"])
+				for s in pref_info:
+					f13.write(s + " ***next*** ")
 				f1.write('\n')
 				f5.write('\n')
 				f9.write('\n')
-			elif random.random() < 0.8:
+				f13.write('\n')
+			elif random.random() < 0.9:
 				for s in pref:
 					f2.write(s + " ***next*** ")
 				for s in pref_tag:
 					f6.write(s + " ***next*** ")
 				for s in pref_int:
 					f10.write(s + " ***next*** ")
-				f2.write(speaker_info["speaker"])
+				for s in pref_info:
+					f14.write(s + " ***next*** ")
 				f2.write('\n')
 				f6.write('\n')
 				f10.write('\n')
+				f14.write('\n')
 			else:
 				for s in pref:
 					f3.write(s + " ***next*** ")
@@ -176,16 +174,18 @@ def parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11
 					f7.write(s + " ***next*** ")
 				for s in pref_int:
 					f11.write(s + " ***next*** ")
-				f3.write(speaker_info["speaker"])
+				for s in pref_info:
+					f15.write(s + " ***next*** ")
 				f3.write('\n')
 				f7.write('\n')
 				f11.write('\n')
+				f15.write('\n')
 			for s in pref:
 					f4.write(s+" ")
 			for s in pref_tag:
 					f8.write(s+" ")
 			for s in pref_int:
-					f12.write(s+" ")			
+					f12.write(s+" ")		
 			f4.write('\n')
 			f8.write('\n')
 			f12.write('\n')
@@ -220,88 +220,38 @@ def sent_2_speaker(json_dir):
 		speaker.append(info)
 	return speaker
 
-parser = argparse.ArgumentParser()
-group = parser.add_mutually_exclusive_group()
-group.add_argument("--guide",action="store_true",help="guide conversation only")
-group.add_argument("--tourist",action="store_true",help="tourist conversation only")
-group.add_argument("--all",action="store_true",help="all conversation")
-args = parser.parse_args()
+# parser = argparse.ArgumentParser()
+# group = parser.add_mutually_exclusive_group()
+# group.add_argument("--guide",action="store_true",help="guide conversation only")
+# group.add_argument("--tourist",action="store_true",help="tourist conversation only")
+# group.add_argument("--all",action="store_true",help="all conversation")
+# args = parser.parse_args()
 FinalLines = []
 FinalTags = []
 finalintent = []
-if args.guide == True:
-	f1 = open('../Guide/Data/train/seq.in','w')
-	f2 = open('../Guide/Data/test/seq.in','w')
-	f3 = open('../Guide/Data/valid/seq.in','w')
-	f4 = open('../Guide/Data/seq.in','w')
-	f5 = open('../Guide/Data/train/seq.out','w')
-	f6 = open('../Guide/Data/test/seq.out','w')
-	f7 = open('../Guide/Data/valid/seq.out','w')
-	f8 = open('../Guide/Data/seq.out','w')
-	f9 = open('../Guide/Data/train/intent','w')
-	f10 = open('../Guide/Data/test/intent','w')
-	f11 = open('../Guide/Data/valid/intent','w')
-	f12 = open('../Guide/Data/intent','w')
-elif args.tourist == True:
-	f1 = open('../Tourist/Data/train/seq.in','w')
-	f2 = open('../Tourist/Data/test/seq.in','w')
-	f3 = open('../Tourist/Data/valid/seq.in','w')
-	f4 = open('../Tourist/Data/seq.in','w')
-	f5 = open('../Tourist/Data/train/seq.out','w')
-	f6 = open('../Tourist/Data/test/seq.out','w')
-	f7 = open('../Tourist/Data/valid/seq.out','w')
-	f8 = open('../Tourist/Data/seq.out','w')
-	f9 = open('../Tourist/Data/train/intent','w')
-	f10 = open('../Tourist/Data/test/intent','w')
-	f11 = open('../Tourist/Data/valid/intent','w')
-	f12 = open('../Tourist/Data/intent','w')
-else:
-	f1 = open('../All/Data/train/seq.in','w')
-	f2 = open('../All/Data/test/seq.in','w')
-	f3 = open('../All/Data/valid/seq.in','w')
-	f4 = open('../All/Data/seq.in','w')
-	f5 = open('../All/Data/train/seq.out','w')
-	f6 = open('../All/Data/test/seq.out','w')
-	f7 = open('../All/Data/valid/seq.out','w')
-	f8 = open('../All/Data/seq.out','w')
-	f9 = open('../All/Data/train/intent','w')
-	f10 = open('../All/Data/test/intent','w')
-	f11 = open('../All/Data/valid/intent','w')
-	f12 = open('../All/Data/intent','w')
 
-for i in range(54):
-	json_dir = str(i+1)
-	if (len(json_dir) == 1):
-		json_dir = '00' + json_dir
-	elif (len(json_dir) == 2):
-		json_dir = '0' + json_dir
-	json_dir = '../dstc5/' + json_dir
-	if (not os.path.exists('../dstc5/' + json_dir + '/label.json')):
-		continue
-	speaker_list = sent_2_speaker(json_dir)
-	parse_one_json(json_dir,speaker_list,args,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12)
+f1 = open('../All/Data/train/seq.in','w')
+f2 = open('../All/Data/test/seq.in','w')
+f3 = open('../All/Data/valid/seq.in','w')
+f4 = open('../All/Data/seq.in','w')
+f5 = open('../All/Data/train/seq.out','w')
+f6 = open('../All/Data/test/seq.out','w')
+f7 = open('../All/Data/valid/seq.out','w')
+f8 = open('../All/Data/seq.out','w')
+f9 = open('../All/Data/train/intent','w')
+f10 = open('../All/Data/test/intent','w')
+f11 = open('../All/Data/valid/intent','w')
+f12 = open('../All/Data/intent','w')
+f13 = open('../All/Data/train/info','w')
+f14 = open('../All/Data/test/info','w')
+f15 = open('../All/Data/valid/info','w')
 
-#ninfile = open('Data/train/train.seq.in', 'w')
-#noutfile = open('Data/train/train.seq.out', 'w')
-#nlabelfile = open('Data/train/train.label','w')
-#vinfile = open('Data/valid/valid.seq.in', 'w')
-#voutfile = open('Data/valid/valid.seq.out', 'w')
-#vlabelfile = open('Data/valid/valid.label','w')
-#tinfile = open('Data/test/test.seq.in', 'w')
-#toutfile = open('Data/test/test.seq.out', 'w')
-#tlabelfile = open('Data/test/test.label','w')
-# for i in range(len(FinalLines)):
-# 	random.seed(i)
-# 	r = random.randint(1, 10)
-# 	if r > 9:
-# 		tinfile.write(FinalLines[i] + '\n')
-# 		toutfile.write(FinalTags[i] + '\n')
-# 		tlabelfile.write(finalintent[i] + '\n')
-# 	elif r > 8:
-# 		vinfile.write(FinalLines[i] + '\n')
-# 		voutfile.write(FinalTags[i] + '\n')
-# 		vlabelfile.write(finalintent[i] + '\n')
-# 	else:
-# 		ninfile.write(FinalLines[i] + '\n')
-# 		noutfile.write(FinalTags[i] + '\n')
-# 		nlabelfile.write(finalintent[i] + '\n')
+train_dir = ['001','002','003','004','006','007','008','009','010','011','012','013','016','017','019','020','021','022','023','024','025','026','028','030','031','032','033','035','039','040','041','047','048','052','053']
+
+for i in range(len(train_dir)):
+	json_dir = '../dstc5/'
+	if (not os.path.exists( json_dir +train_dir[i] +'/label.json')):
+		print ('dir error')
+	else:
+		speaker_list = sent_2_speaker(json_dir + train_dir[i])
+		parse_one_json(json_dir + train_dir[i],speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15)
