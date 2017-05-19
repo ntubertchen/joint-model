@@ -86,7 +86,7 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 	for _ in range(7):
 		pref.append(empty)
 		pref_tag.append("O")
-		pref_int.append("NONE-NONE")
+		pref_int.append("None-none")
 		pref_info.append(empty)
 	for line in data["utterances"]:
 		speaker_info = speaker_list[counter]
@@ -111,7 +111,7 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 			# 	sentence += attr + " "
 			intent = ""
 			if line["speech_act"][i]["act"] == "":
-				intent = "NONE"
+				intent = "None"
 			else:
 				intent = line["speech_act"][i]["act"].strip()
 			for attr in line["speech_act"][i]["attributes"]:
@@ -119,7 +119,7 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 				# if attr == "HOW_TO ":
 				# 	print "ass"
 				if attr == "":
-					attr = 'NONE'
+					attr = 'none'
 				intent += "-" + attr
 
 			# sentence += line["speech_act"][i]["act"] + " "

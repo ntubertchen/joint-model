@@ -35,16 +35,14 @@ parser.add_argument('--slot', action='store_false',help='slot training')
 args = parser.parse_args()
 
 
-path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/train/seq.in" , "../All/Data/train/seq.out" , "../All/Data/train/intent"]
-t_path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/test/seq.in" , "../All/Data/test/seq.out" , "../All/Data/test/intent"]
-slotpath = '../All/Data/slot_list'
-intentpath = '../All/Data/intent_list'
-Data = DataPrepare(path,slotpath,intentpath)
-t_data = DataPrepare(t_path,slotpath,intentpath)
+path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/train/seq.in" , "../All/Data/train/seq.out" , "../All/Data/train/intent","../All/Data/train/info"]
+t_path = ["../GloVe/glove.6B.200d.txt" , "../All/Data/test/seq.in" , "../All/Data/test/seq.out" , "../All/Data/test/intent","../All/Data/test/info"]
+Data = DataPrepare(path)
+t_data = DataPrepare(t_path)
 # Parameters
 learning_rate = 0.0001
 epoc = 10
-batch_size = 3
+batch_size = 1
 display_step = 50
 
 # Network Parameters
@@ -53,8 +51,8 @@ display_step = 50
 n_hidden = 128 # hidden layer num of features
 #n_classes = 10 # MNIST total classes (0-9 digits)
 n_words = Data.maxlength
-n_slot = Data.slot_dim
-n_intent = Data.intent_dim
+n_slot = Data.slot_len
+n_intent = Data.intent_len
 w2v_l = 200
 
 """
@@ -65,10 +63,10 @@ S_training_iters = 400000
 S_batch_size = 1
 
 # Network Parameters
-S_vector_length = Data.slot_dim + Data.intent_dim # MNIST data input (img shape: 28*28) /////vector length 613    
+S_vector_length = Data.slot_len + Data.intent_len # MNIST data input (img shape: 28*28) /////vector length 613    
 S_n_sentences = 3 # timesteps /////number of sentences 
 S_n_hidden = 128 # hidden layer num of features
-S_n_labels = Data.intent_dim # MNIST total classes (0-9 digits)
+S_n_labels = Data.intent_len # MNIST total classes (0-9 digits)
 
 #sap_x = tf.placeholder("float", [None, S_n_sentences, S_vector_length])
 #sap_y = tf.placeholder("float", [None, S_n_labels])
@@ -127,14 +125,14 @@ def slot_loss(pred,y,Data):
     for i in range(Data.maxlength):
         logit = tf.slice(pred,[i,0,0],[1,-1,-1])
         label = tf.slice(y,[i,0,0],[1,-1,-1])
-        cost.append((tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logit[0],labels=label[0]))))
+        cost.append((tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logit[0],labels=label[0]))))
     loss = tf.reduce_sum(cost)
     return loss
 
 def intent_loss(pred,y):
     y = tf.transpose(y,perm=[1,0,2])
     pred = tf.transpose(pred,perm=[1,0,2])
-    return tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=pred[0],labels=y[0]))
+    return tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=pred[0],labels=y[0]))
 
 def tag_out(mertix,label_dict):
     #batch x sentence x vector
@@ -184,7 +182,79 @@ _intent_optimizer = tf.train.AdamOptimizer(learning_rate=S_learning_rate).minimi
 #correct_pred = tf.equal(tf.argmax(pred,1), tf.argmax(y,1)) 
 #accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
+def toone(logits):
+    for i in range(len(logits[0])):
+        for j in range(len(logits[0][i])):
+            if logits[0][i][j] > 0.5:
+                logits[0][i][j] = 1
+            else:
+                logits[0][i][j] = 0
+    return logits
 
+def acc_slot(logits,labels,batch_l):
+    logits = np.transpose(logits,(1,0,2))
+    logits = toone(logits)
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
+    for i in range(batch_l):
+        for j in range(len(logits[0][i])):
+            if logits[0][i][j] == labels[0][i][j] and labels[0][i][j] == 1:
+                tp += 1
+            elif logits[0][i][j] == labels[0][i][j] and labels[0][i][j] == 0:
+                tn += 1
+            elif logits[0][i][j] != labels[0][i][j] and labels[0][i][j] == 1:
+                fn += 1
+            elif logits[0][i][j] != labels[0][i][j] and labels[0][i][j] == 0:
+                fp += 1
+    _p = tp+fp
+    _r = tp+fn
+    if _p == 0:
+        p = float(tp)/1
+    else:
+        p = float(tp)/(tp+fp)
+    if _r == 0:
+        r = float(tp)/1
+    else:
+        r = float(tp)/(tp+fn)
+    if r+p == 0:
+        print ("intent precision: ",(p)," recall:",(r)," f measure:","r+p=0")
+    else:
+        print ("intent precision: ",(p)," recall:",(r)," f measure:",(2*p*r/(r+p)))
+    
+
+def acc_int(logits,labels):
+    logits = np.transpose(logits,(1,0,2))
+    logits = toone(logits)
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
+    for i in range(len(logits[0])):
+        for j in range(len(logits[0][i])):
+            if logits[0][i][j] == labels[0][i][j] and labels[0][i][j] == 1:
+                tp += 1
+            elif logits[0][i][j] == labels[0][i][j] and labels[0][i][j] == 0:
+                tn += 1
+            elif logits[0][i][j] != labels[0][i][j] and labels[0][i][j] == 1:
+                fn += 1
+            elif logits[0][i][j] != labels[0][i][j] and labels[0][i][j] == 0:
+                fp += 1
+    _p = tp+fp
+    _r = tp+fn
+    if _p == 0:
+        p = float(tp)/1
+    else:
+        p = float(tp)/(tp+fp)
+    if _r == 0:
+        r = float(tp)/1
+    else:
+        r = float(tp)/(tp+fn)
+    if r+p == 0:
+        print ("intent precision: ",(p)," recall:",(r)," f measure:","r+p=0")
+    else:
+        print ("intent precision: ",(p)," recall:",(r)," f measure:",(2*p*r/(r+p)))
 
 saver = tf.train.Saver()
 
@@ -197,8 +267,8 @@ if args.test == False:
         ac = 0
         sess.run(init)
         # Keep training until reach max iterations
-        seq_in,seq_out,seq_int = Data.get_all()
-        t_in,t_out,t_int = t_data.get_all()
+        seq_in,seq_out,seq_int,seq_info,seq_rev = Data.get_all()
+        t_in,t_out,t_int,t_info,i_rev = t_data.get_all()
         step = 0
         batch_seq = []
         fout = open('./testout','w')
@@ -207,11 +277,10 @@ if args.test == False:
         while step < epoc:
             np.random.shuffle(batch_seq)
             for i in range(len(seq_in)):
-                batch_x, batch_slot, batch_intent = seq_in[batch_seq[i]],seq_out[batch_seq[i]],seq_int[batch_seq[i]]
-                nlu_in = batch_x[:len(batch_x)-2]
-                _s_nlu_out = batch_slot[:len(batch_slot)-1]
-                _i_nlu_out = batch_intent[:len(batch_intent)-1]
-                intd = Data.rev_intentdict
+                batch_x, batch_slot, batch_intent, batch_info, batch_rev = seq_in[batch_seq[i]],seq_out[batch_seq[i]],seq_int[batch_seq[i]],seq_info[batch_seq[i]],seq_rev[batch_seq[i]]
+                nlu_in = batch_x[-1:]
+                _s_nlu_out = batch_slot[-1:]
+                _i_nlu_out = [batch_intent[-1:]]
                 _,_ = sess.run([_slot_optimizer,_intent_optimizer],feed_dict={x:nlu_in,y_slot: _s_nlu_out,y_intent: _i_nlu_out})
                 
                 # if step % display_step == 0:
@@ -219,20 +288,23 @@ if args.test == False:
                 #     acc = sess.run(accuracy, feed_dict={x: batch_x, y: batch_y})
                 #     # Calculate batch loss
                 if i % 100 == 0 and i != 0:
-                    tmp = sess.run([int_out],feed_dict={x:nlu_in,y_slot: _s_nlu_out,y_intent: _i_nlu_out})
-                    i_a,s_a = sess.run([int_acc,slot_acc],feed_dict={x:nlu_in,y_slot: _s_nlu_out,y_intent: _i_nlu_out})
-                    print("Iter i:" +str(step) + " "+ str(i) +" {:.6f}".format(i_a)+" "+"{:.6f}".format(s_a))
-                if i % 10000 == 0 and i != 0:
-                    s_ac = 0
-                    int_ac = 0
-                    for k in range(len(t_in)):
-                        test_x,test_s,test_i = t_in[k],t_out[k],t_int[k]
-                        t_nlu_in = test_x[:len(test_x)-2]
-                        t_snlu = test_s[:len(test_s)-1]
-                        t_inlu = test_i[:len(test_i)-1]
-                        i_a,s_a = sess.run([int_acc,slot_acc],feed_dict={x:t_nlu_in,y_slot: t_snlu,y_intent: t_inlu})
-                        s_ac += s_a
-                        int_ac += i_a
+                    i_p,s_p = sess.run([intent_pred,slot_pred],feed_dict={x:nlu_in,y_slot: _s_nlu_out,y_intent: _i_nlu_out})
+                    batch_l = batch_rev[-1].strip().split()
+                    batch_l = len(batch_l)
+                    acc_slot(s_p,_s_nlu_out,batch_l)
+                    acc_int(i_p,_i_nlu_out)
+                    #print("Iter i:" +str(step) + " "+ str(i) +" {:.6f}".format(i_a)+" "+"{:.6f}".format(s_a))
+                # if i % 10000 == 0 and i != 0:
+                #     s_ac = 0
+                #     int_ac = 0
+                #     for k in range(len(t_in)):
+                #         test_x,test_s,test_i = t_in[k],t_out[k],t_int[k]
+                #         t_nlu_in = test_x[:len(test_x)-2]
+                #         t_snlu = test_s[:len(test_s)-1]
+                #         t_inlu = test_i[:len(test_i)-1]
+                #         i_a,s_a = sess.run([int_acc,slot_acc],feed_dict={x:t_nlu_in,y_slot: t_snlu,y_intent: t_inlu})
+                #         s_ac += s_a
+                #         int_ac += i_a
                         #s_p,int_p = sess.run([slot_pred,intent_pred],feed_dict={\
                         #    x:t_nlu_in,y_slot:t_snlu,y_intent:t_inlu})
                         #s_p = np.transpose(s_p,[1,0,2])
@@ -241,7 +313,7 @@ if args.test == False:
                         #write_out(Data.rev_slotdict,fout,s_p)
                         #write_out(Data.rev_intentdict,fout,t_inlu)
                         #write_out(Data.rev_intentdict,fout,int_p)
-                    print("Testing" +str(step) + " "+ str(i) +" {:.6f}".format(s_ac/len(t_in))+" "+"{:.6f}".format(int_ac/len(t_in)))
+                    #print("Testing" +str(step) + " "+ str(i) +" {:.6f}".format(s_ac/len(t_in))+" "+"{:.6f}".format(int_ac/len(t_in)))
             step += 1
         save_path = saver.save(sess,"../model/model.ckpt")
         # print("Optimization Finished!")
