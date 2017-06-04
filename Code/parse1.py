@@ -73,7 +73,7 @@ def parse_tagging(sentences):
 
 	return final_lines, final_tags
 
-def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15):
+def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15,intype):
 	with open(json_dir + '/label.json', 'r') as jsonfile:
 		data = json.load(jsonfile)
 	sentences = []
@@ -141,7 +141,7 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 			pref_tag.append(final_tag)
 			pref_int.append(intent)
 			pref_info.append(speaker_info["speaker"])
-			if random.random() < 0.7:
+			if intype == "train":
 				for s in pref:
 					f1.write(s + " ***next*** ")
 				for s in pref_tag:
@@ -154,7 +154,7 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 				f5.write('\n')
 				f9.write('\n')
 				f13.write('\n')
-			elif random.random() < 0.9:
+			elif intype == "test":
 				for s in pref:
 					f2.write(s + " ***next*** ")
 				for s in pref_tag:
@@ -180,15 +180,15 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 				f7.write('\n')
 				f11.write('\n')
 				f15.write('\n')
-			for s in pref:
-					f4.write(s+" ")
-			for s in pref_tag:
-					f8.write(s+" ")
-			for s in pref_int:
-					f12.write(s+" ")		
-			f4.write('\n')
-			f8.write('\n')
-			f12.write('\n')
+			# for s in pref:
+			# 		f4.write(s+" ")
+			# for s in pref_tag:
+			# 		f8.write(s+" ")
+			# for s in pref_int:
+			# 		f12.write(s+" ")		
+			# f4.write('\n')
+			# f8.write('\n')
+			# f12.write('\n')
 
 def sent_2_speaker(json_dir):
 	with open(json_dir + '/log.json', 'r') as jsonfile:
@@ -247,11 +247,27 @@ f14 = open('../All/Data/test/info','w')
 f15 = open('../All/Data/valid/info','w')
 
 train_dir = ['001','002','003','004','006','007','008','009','010','011','012','013','016','017','019','020','021','022','023','024','025','026','028','030','031','032','033','035','039','040','041','047','048','052','053']
-
-for i in range(len(train_dir)):
+train_4 = ['001','002','003','004','006','007','008','009','010','012','013','017','019','022']
+test_4 = ['021','023','024','030','033','035','041','047','048']
+dev_4 =  ['011','016','020','025','026','028']
+for i in range(len(test_4)):
 	json_dir = '../dstc5/'
-	if (not os.path.exists( json_dir +train_dir[i] +'/label.json')):
+	if (not os.path.exists( json_dir +test_4[i] +'/label.json')):
 		print ('dir error')
 	else:
-		speaker_list = sent_2_speaker(json_dir + train_dir[i])
-		parse_one_json(json_dir + train_dir[i],speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15)
+		speaker_list = sent_2_speaker(json_dir + test_4[i])
+		parse_one_json(json_dir + test_4[i],speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15,"test")
+for i in range(len(train_4)):
+	json_dir = '../dstc5/'
+	if (not os.path.exists( json_dir +train_4[i] +'/label.json')):
+		print ('dir error')
+	else:
+		speaker_list = sent_2_speaker(json_dir + train_4[i])
+		parse_one_json(json_dir + train_4[i],speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15,"train")
+for i in range(len(dev_4)):
+	json_dir = '../dstc5/'
+	if (not os.path.exists( json_dir +dev_4[i] +'/label.json')):
+		print ('dir error')
+	else:
+		speaker_list = sent_2_speaker(json_dir + dev_4[i])
+		parse_one_json(json_dir + dev_4[i],speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15,"dev")
