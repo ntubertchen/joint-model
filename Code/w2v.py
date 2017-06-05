@@ -51,30 +51,26 @@ class DataPrepare(object):
     slot = [BIO,MAIN,FROM_TO,REL,SUBCAT]
     intent = [SAC,SAA]
     s_d = []
-    s_rev_d = []
+    s_rev_d = dict()
     i_d = []
-    i_rev_d = []
+    i_rev_d = dict()
     count = 0
     for tags in slot:
       d = dict()
-      rev_d = dict()
       for tag in tags:
         d[tag] = count
-        rev_d[count] = tag
+        s_rev_d[count] = tag
         count += 1
       s_d.append(d)
-      s_rev_d.append(rev_d)
     slot_len = count
     count = 0
     for tags in intent:
       d = dict()
-      rev_d = dict()
       for tag in tags:
         d[tag] = count
-        rev_d[count] = tag
+        i_rev_d[count] = tag
         count += 1
       i_d.append(d)
-      i_rev_d.append(rev_d)
     return s_d,s_rev_d,slot_len,i_d,i_rev_d,count
 
   def set_word2vec(self,seq_in):
