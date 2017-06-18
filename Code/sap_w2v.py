@@ -215,4 +215,5 @@ class DataPrepare(object):
   #   return seq_in,seq_out,intent
 
   def get_all(self):
-    return self.encoded,self.slotvalue,self.intentvalue,self.sen_info,self.reverse,self.talker
+    #return self.encoded,self.slotvalue,self.intentvalue,self.sen_info,self.reverse,self.talker
+    return self.slotvalue,self.intentvalue,self.sen_info,self.talker

@@ -68,8 +68,8 @@ def get_glove(GloVe):
 
 Glove = "../GloVe/glove.6B.200d.txt"
 glove_dict = get_glove(Glove)
-path = ["../GloVe/glove.6B.200d.txt" , "../All/Sap/train/seq.in" , "../All/Sap/train/seq.out" , "../All/Sap/train/intent","../All/Sap/train/info"]
-t_path = ["../GloVe/glove.6B.200d.txt" , "../All/Sap/test/seq.in" , "../All/Sap/test/seq.out" , "../All/Sap/test/intent","../All/Sap/test/info"]
+path = ["../GloVe/glove.6B.200d.txt" , "../All/Sap/train/seq.in" , "../All/Sap/train/seq.out" , "../All/Sap/train/intent","../All/Sap/train/info","../All/Sap/train/talker"]
+t_path = ["../GloVe/glove.6B.200d.txt" , "../All/Sap/test/seq.in" , "../All/Sap/test/seq.out" , "../All/Sap/test/intent","../All/Sap/test/info","../All/Sap/test/talker"]
 
 Data = DataPrepare(path,glove_dict)
 t_data = DataPrepare(t_path,glove_dict)
@@ -228,8 +228,8 @@ _SAP_optimizer = tf.train.AdamOptimizer(learning_rate=S_learning_rate).minimize(
 saver = tf.train.Saver()
 # Initializing the variables
 init = tf.global_variables_initializer()
-seq_out,seq_int,seq_info = Data.get_all()
-t_out,t_int,t_info = t_data.get_all()
+seq_out,seq_int,seq_info,seq_talker = Data.get_all()
+t_out,t_int,t_info,t_talker = t_data.get_all()
 if args.test == False:
     # Launch the graph
     with tf.Session(config=config) as sess:
@@ -246,7 +246,7 @@ if args.test == False:
                 train_batch = []
                 train_y_batch = []
                 train_info = []
-                batch_slot, batch_intent,batch_info = seq_out[batch_seq[i]],seq_int[batch_seq[i]],seq_info[batch_seq[i]]
+                batch_slot, batch_intent,batch_info,batch_talker = seq_out[batch_seq[i]],seq_int[batch_seq[i]],seq_info[batch_seq[i]],seq_talker[batch_seq[i]]
                 _s_nlu_out = batch_slot[:-1]
                 summed_slot = np.sum(_s_nlu_out,axis=1)
                 _sen_info = batch_info[:-1]
@@ -256,13 +256,12 @@ if args.test == False:
                     _info_in[1][k][1] = 1
                     _info_in[0][k][2] = _sen_info[k]
                     _info_in[1][k][2] = _sen_info[k+3]
-                # for j in range(len(summed_slot)):
-                #     summed_slot[j][Data.slotdict[0]['O']] = 0
                 t_i_nlu_out = batch_intent[0:3]
                 g_i_nlu_out = batch_intent[3:6]
                 #tags_con = np.concatenate((summed_slot,_i_nlu_out),axis=1)
                 train_y_batch.append(batch_intent[-1])
-                _ = sess.run([_SAP_optimizer],feed_dict={sap_t:[t_i_nlu_out],sap_g:[g_i_nlu_out],sap_y:train_y_batch,sap_info:_info_in})
+                if batch_talker.strip() == "Guide":
+                    _ = sess.run([_SAP_optimizer],feed_dict={sap_t:[t_i_nlu_out],sap_g:[g_i_nlu_out],sap_y:train_y_batch,sap_info:_info_in})
                 if i * batch_size % 3000 == 0 and i != 0:
                     i1=i2=i3=sapacc=count=0
                     logit_list = []
@@ -273,6 +272,7 @@ if args.test == False:
                         batch_slot=t_out[k]
                         batch_intent=t_int[k]
                         batch_info = t_info[k]
+                        batch_talker = t_talker[k]
                         _sen_info = batch_info[:-1]
                         _info_in = np.zeros((2,3,3))
                         for k in range(3):
@@ -283,12 +283,11 @@ if args.test == False:
                         count += 1
                         _s_nlu_out = batch_slot[:-1]
                         summed_slot = np.sum(_s_nlu_out,axis=1)
-                        # for j in range(len(summed_slot)):
-                        #     summed_slot[j][Data.slotdict[0]['O']] = 0
                         t_i_nlu_out = batch_intent[0:3]
                         g_i_nlu_out = batch_intent[3:6]
                         #tags_con = np.concatenate((summed_slot,_i_nlu_out),axis=1)
-                        sapp = sess.run([_pred],feed_dict={sap_t:[t_i_nlu_out],sap_g:[g_i_nlu_out],sap_y:[batch_intent[-1]],sap_info:_info_in})
+                        if batch_talker.strip() == "Guide":
+                            sapp = sess.run([_pred],feed_dict={sap_t:[t_i_nlu_out],sap_g:[g_i_nlu_out],sap_y:[batch_intent[-1]],sap_info:_info_in})
                         logit,label = preprocess(sapp,[batch_intent[-1]])
                         logit_list = np.concatenate((logit_list,logit),axis=0)
                         label_list = np.concatenate((label_list,label),axis=0)
