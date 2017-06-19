@@ -251,18 +251,19 @@ if args.test == False:
                     sap_label_list = []
                     for j in range(len(t_in)):
                         test_x,test_slot,test_intent,test_info,test_rev = t_in[j] ,t_out[j],t_int[j],t_info[j],i_rev[j]
-                        tour_in = test_x[4:7]
-                        tour_nlu = [test_intent[4:7]]
-                        int_in = [test_intent[4:7]]
-                        tour_nlu = np.transpose(tour_nlu,(1,0,2))
-                        int_in = np.transpose(int_in,(1,0,2))
-                        _s1_len = len(test_rev[4].strip().split())
-                        _s2_len = len(test_rev[5].strip().split())
-                        _s3_len = len(test_rev[6].strip().split())
-                        i_p = sess.run(int_pred,feed_dict={t_x:tour_in,y_intent: int_in,s1_len:[_s1_len],s2_len:[_s2_len],s3_len:[_s3_len]})
-                        logit,label = intpreprocess([i_p[-1]],[test_intent[-1]])
-                        int_logit_list = np.concatenate((int_logit_list,logit),axis=0)
-                        int_label_list = np.concatenate((int_label_list,label),axis=0)
+                        if test_info[-1].strip() == "Tourist":
+                            tour_in = test_x[4:7]
+                            tour_nlu = [test_intent[4:7]]
+                            int_in = [test_intent[4:7]]
+                            tour_nlu = np.transpose(tour_nlu,(1,0,2))
+                            int_in = np.transpose(int_in,(1,0,2))
+                            _s1_len = len(test_rev[4].strip().split())
+                            _s2_len = len(test_rev[5].strip().split())
+                            _s3_len = len(test_rev[6].strip().split())
+                            i_p = sess.run(int_pred,feed_dict={t_x:tour_in,y_intent: int_in,s1_len:[_s1_len],s2_len:[_s2_len],s3_len:[_s3_len]})
+                            logit,label = intpreprocess([i_p[-1]],[test_intent[-1]])
+                            int_logit_list = np.concatenate((int_logit_list,logit),axis=0)
+                            int_label_list = np.concatenate((int_label_list,label),axis=0)
                     print (i)
                     print (f1_score(int_logit_list,int_label_list,average='binary'))
             step += 1
