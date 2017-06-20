@@ -1,13 +1,4 @@
-'''
-A Bidirectional Recurrent Neural Network (LSTM) implementation example using TensorFlow library.
-This example is using the MNIST database of handwritten digits (http://yann.lecun.com/exdb/mnist/)
-Long Short Term Memory paper: http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
-Author: Aymeric Damien
-Project: https://github.com/aymericdamien/TensorFlow-Examples/
-'''
-
 from __future__ import print_function
-
 import tensorflow as tf
 from tensorflow.contrib import rnn
 import numpy as np
@@ -16,12 +7,6 @@ import argparse
 import random
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import Binarizer
-'''
-To classify images using a bidirectional recurrent neural network, we consider
-every image row as a sequence of pixels. Because MNIST image shape is 28*28px,
-we will then handle 28 sequences of 28 steps for every sample.
-'''
-# python s_v.py --glove "../glove/glove.6B.200d.txt" --train_p "../Data/" --slot_l "../Data/slot_l.txt" --intent_l "../Data/intent_l.txt"
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -36,7 +21,6 @@ parser.add_argument('--intent_l', help='intent path')
 parser.add_argument('--intent', action='store_false',help='intent training')
 parser.add_argument('--slot', action='store_false',help='slot training')
 args = parser.parse_args()
-
 
 def get_glove(GloVe):
     d = {}
@@ -76,39 +60,26 @@ t_data = DataPrepare(t_path,glove_dict)
 # Parameters
 learning_rate = 0.0005 
 epoc = 10
-batch_size = 1 ##################
+batch_size = 1
 display_step = 50
 
-# Network Parameters
-#n_input = 28 # MNIST data input (img shape: 28*28)
-#n_steps = 28 # timesteps
-#n_hidden = 128 # hidden layer num of features
-#n_classes = 10 # MNIST total classes (0-9 digits)
-n_words = Data.maxlength
-n_slot = Data.slot_len
-n_intent = Data.intent_len
-
-"""
-SAP Parameters
-"""
-S_learning_rate = 0.005#############
+# SAP Parameters
+S_learning_rate = 0.005
 S_training_iters = 400000
 S_batch_size = 1
 
 # Network Parameters
-S_vector_length = Data.intent_len #+ Data.slot_len # MNIST data input (img shape: 28*28) /////vector length 613    
+S_vector_length = Data.intent_len #+ Data.slot_len # vector length 613
 S_n_sentences = 3 # timesteps /////number of sentences 
 S_n_hidden = 128 # hidden layer num of features ###########
 S_n_info = 3
-S_n_labels = Data.intent_len # MNIST total classes (0-9 digits)
-
-attention_weight = tf.Variable(tf.random_normal([3,1]),name='attention_weight')
+S_n_labels = Data.intent_len
 
 # tf Graph input
-sap_t = tf.placeholder("float", [None, S_n_sentences, S_vector_length])
-sap_g = tf.placeholder("float", [None, S_n_sentences, S_vector_length])
-sap_info = tf.placeholder("float",[None,S_n_sentences,S_n_info])
-sap_y = tf.placeholder("float", [None, S_n_labels])
+sap_t = tf.placeholder(tf.float32, [None, S_n_sentences, S_vector_length])
+sap_g = tf.placeholder(tf.float32, [None, S_n_sentences, S_vector_length])
+sap_info = tf.placeholder(tf.float32, [None,S_n_sentences, S_n_info])
+sap_y = tf.placeholder(tf.float32, [None, S_n_labels])
 
 # Define weights
 weights = {
@@ -116,7 +87,7 @@ weights = {
     'SAP': tf.Variable(tf.random_normal([4*S_n_hidden, S_n_labels]),name="weight")
 }
 biases = {
-    'SAP': tf.Variable(tf.random_normal([S_n_labels]),name="biase")
+    'SAP': tf.Variable(tf.random_normal([S_n_labels]),name="biases")
 }
 
 def SAP_BiRNN(x,scope):
@@ -133,18 +104,10 @@ def SAP_BiRNN(x,scope):
 
 tourist_in = tf.concat([sap_t,[sap_info[0]]],2)
 guide_in = tf.concat([sap_g,[sap_info[1]]],2)
-#add attention
-            # attention_in = (tf.multiply(sap_in[0],attention_weight))
-            # attention_sum = tf.reduce_mean(attention_in,0)
-            # tmp = []
-            # for i in range(3):
-            #     tmp.append(tf.concat([sap_in[0][i],attention_sum],0))
-#attention end
 tourist_layer = SAP_BiRNN(tourist_in,'Tourist')
 guide_layer = SAP_BiRNN(guide_in,'Guide')
 concated_layer = tf.concat([tourist_layer,guide_layer],-1)
 SAP_pred = tf.matmul(concated_layer,weights['SAP']) + biases['SAP']#8*hidden
-
 _pred = tf.sigmoid(SAP_pred)
 
 def toone(logit):
@@ -179,39 +142,6 @@ def toone(logit):
         logit[0][i][max_minor] = 1
     return logit[0]
 
-def intout(fp,pred_out):
-    first = 1
-    for i in range(len(pred_out)):
-        if pred_out[i] > 0.5 and first == 1:
-            fp.write(Data.rev_intentdict[i])
-            first = 0
-        elif pred_out[i] > 0.5:
-            fp.write("-"+Data.rev_intentdict[i])
-    fp.write('\n')
-
-def acc_sap(logit,label,flp):
-    tp = 0
-    tn = 0
-    fp = 0
-    fn = 0
-    logit = toone(logit)
-    intout(flp,logit[-1])
-    for i in range(len(logit)):
-        for j in range(len(logit[i])):
-            if logit[i][j] > 0.9 and label[i][j] > 0.9:
-                tp += 1
-            elif logit[i][j] < 0.5 and label[i][j] < 0.5:
-                tn += 1
-            elif logit[i][j] < 0.9 and label[i][j] > 0.9:
-                fn += 1
-            elif logit[i][j] > 0.5 and label[i][j] < 0.5:
-                fp += 1
-    if fp == 0 and fn == 0 and tp > 0:
-        acc = 1
-    else:
-        acc = 0
-    return tp,fp,fn,acc
-
 def preprocess(logit,label):
     logit = toone(logit)
     if logit[-1][Data.intentdict[1]['none']] > 0.5 and label[-1][Data.intentdict[1]['none']] > 0.5:
@@ -230,6 +160,7 @@ saver = tf.train.Saver()
 init = tf.global_variables_initializer()
 seq_out,seq_int,seq_info,seq_talker = Data.get_all()
 t_out,t_int,t_info,t_talker = t_data.get_all()
+
 if args.test == False:
     # Launch the graph
     with tf.Session(config=config) as sess:
@@ -237,7 +168,6 @@ if args.test == False:
         # Keep training until reach max iterations
         step = 0
         batch_seq = []
-        #fout = open('./testout','w')
         for i in range(len(seq_out)):
             batch_seq.append(i)
         while step < epoc:
@@ -285,7 +215,6 @@ if args.test == False:
                         summed_slot = np.sum(_s_nlu_out,axis=1)
                         t_i_nlu_out = batch_intent[0:3]
                         g_i_nlu_out = batch_intent[3:6]
-                        #tags_con = np.concatenate((summed_slot,_i_nlu_out),axis=1)
                         if batch_talker.strip() == "Guide":
                             sapp = sess.run([_pred],feed_dict={sap_t:[t_i_nlu_out],sap_g:[g_i_nlu_out],sap_y:[batch_intent[-1]],sap_info:_info_in})
                         logit,label = preprocess(sapp,[batch_intent[-1]])
@@ -294,7 +223,6 @@ if args.test == False:
                     print (f1_score(logit_list,label_list,average='binary'))
             step += 1
         save_path = saver.save(sess,"../model/sapmodel.ckpt")
-        # print("Optimization Finished!")
 else:
     with tf.Session() as sess:
         ckpt = tf.train.get_checkpoint_state("../model")
