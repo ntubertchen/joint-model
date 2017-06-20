@@ -5,6 +5,10 @@ import os
 import random
 import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--len', default='3',type=int)
+args = parser.parse_args()
+
 def parse_tagging(sentences):
 	taggings = []
 	types = ['FROM-TO', 'REL', 'CAT']
@@ -78,16 +82,28 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 		data = json.load(jsonfile)
 	sentences = []
 	counter = 0
-	pref = []
-	pref_tag = []
-	pref_int = []
-	pref_info = []
+	step_pref_guide = []
+	step_pref_tourist = []
+	nl_pref_guide = []
+	nl_pref_tourist = []
+	nl_pref = ""
+	i_pref_guide = []
+	i_pref_tourist = []
+	i_pref = ""
+	s_pref_guide = []
+	s_pref_tourist = []
+	s_pref = ""
+	speaker = ""
 	empty = "Empty"
-	for _ in range(7):
-		pref.append(empty)
-		pref_tag.append("O")
-		pref_int.append("None-none")
-		pref_info.append(empty)
+	for i in range(args.len):
+		step_pref_tourist.append(args.len-i)
+		step_pref_guide.append(args.len-i)
+		i_pref_tourist.append("None-none")
+		s_pref_tourist.append('O')
+		i_pref_guide.append("None-none")
+		s_pref_guide.append('O')
+		nl_pref_guide.append(empty)
+		nl_pref_tourist.append(empty)
 	for line in data["utterances"]:
 		speaker_info = speaker_list[counter]
 		counter += 1
@@ -116,79 +132,105 @@ def parse_one_json(json_dir,speaker_list,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,
 				intent = line["speech_act"][i]["act"].strip()
 			for attr in line["speech_act"][i]["attributes"]:
 				attr = attr.strip()
-				# if attr == "HOW_TO ":
-				# 	print "ass"
 				if attr == "":
 					attr = 'none'
 				intent += "-" + attr
-
-			# sentence += line["speech_act"][i]["act"] + " "
-			# intent = ""
-			# for attr in line["speech_act"][i]["attributes"]:
-			# 	if attr == "":
-			# 		attr = "MAIN"
-			# 	intent += "-" + attr
-			# sentence += intent
-			#print (sentence,intent)
-			pref = pref[1:]
-			pref_tag = pref_tag[1:]
-			pref_int = pref_int[1:]
-			pref_info = pref_info[1:]
 			if final_line.strip() == "":
-				pref.append("Empty")
+				nl_pref = "Empty"
 			else:
-				pref.append(final_line)
-			pref_tag.append(final_tag)
-			pref_int.append(intent)
-			pref_info.append(speaker_info["speaker"])
+				nl_pref = final_line
+			i_pref = intent
+			s_pref = final_tag
+			speaker = speaker_info["speaker"].strip()
 			if intype == "train":
-				for s in pref:
+				for s in nl_pref_tourist:
 					f1.write(s + " ***next*** ")
-				for s in pref_tag:
+				for s in nl_pref_guide:
+					f1.write(s + " ***next*** ")
+				f1.write(nl_pref + " ***next*** \n")
+				for s in s_pref_tourist:
 					f5.write(s + " ***next*** ")
-				for s in pref_int:
+				for s in s_pref_guide:
+					f5.write(s + " ***next*** ")
+				f5.write(s_pref + " ***next*** \n")
+				for s in i_pref_tourist:
 					f9.write(s + " ***next*** ")
-				for s in pref_info:
-					f13.write(s + " ***next*** ")
-				f1.write('\n')
-				f5.write('\n')
-				f9.write('\n')
-				f13.write('\n')
+				for s in i_pref_guide:
+					f9.write(s + " ***next*** ")
+				f9.write(i_pref + " ***next*** \n")
+				for s in step_pref_tourist:
+					f13.write(str(s) + " ***next*** ")
+				for s in step_pref_guide:
+					f13.write(str(s) + " ***next*** ")
+				f13.write('0' + " ***next*** \n")
+				f4.write(speaker+'\n')
 			elif intype == "test":
-				for s in pref:
+				for s in nl_pref_tourist:
 					f2.write(s + " ***next*** ")
-				for s in pref_tag:
+				for s in nl_pref_guide:
+					f2.write(s + " ***next*** ")
+				f2.write(nl_pref + " ***next*** \n")
+				for s in s_pref_tourist:
 					f6.write(s + " ***next*** ")
-				for s in pref_int:
+				for s in s_pref_guide:
+					f6.write(s + " ***next*** ")
+				f6.write(s_pref + " ***next*** \n")
+				for s in i_pref_tourist:
 					f10.write(s + " ***next*** ")
-				for s in pref_info:
-					f14.write(s + " ***next*** ")
-				f2.write('\n')
-				f6.write('\n')
-				f10.write('\n')
-				f14.write('\n')
+				for s in i_pref_guide:
+					f10.write(s + " ***next*** ")
+				f10.write(i_pref + " ***next*** \n")
+				for s in step_pref_tourist:
+					f14.write(str(s) + " ***next*** ")
+				for s in step_pref_guide:
+					f14.write(str(s) + " ***next*** ")
+				f14.write('0' + " ***next*** \n")
+				f8.write(speaker+'\n')
 			else:
-				for s in pref:
+				for s in nl_pref_tourist:
 					f3.write(s + " ***next*** ")
-				for s in pref_tag:
+				for s in nl_pref_guide:
+					f3.write(s + " ***next*** ")
+				f3.write(nl_pref + " ***next*** \n")
+				for s in s_pref_tourist:
 					f7.write(s + " ***next*** ")
-				for s in pref_int:
+				for s in s_pref_guide:
+					f7.write(s + " ***next*** ")
+				f7.write(s_pref + " ***next*** \n")
+				for s in i_pref_tourist:
 					f11.write(s + " ***next*** ")
-				for s in pref_info:
-					f15.write(s + " ***next*** ")
-				f3.write('\n')
-				f7.write('\n')
-				f11.write('\n')
-				f15.write('\n')
-			# for s in pref:
-			# 		f4.write(s+" ")
-			# for s in pref_tag:
-			# 		f8.write(s+" ")
-			# for s in pref_int:
-			# 		f12.write(s+" ")		
-			# f4.write('\n')
-			# f8.write('\n')
-			# f12.write('\n')
+				for s in i_pref_guide:
+					f11.write(s + " ***next*** ")
+				f11.write(i_pref + " ***next*** \n")
+				for s in step_pref_tourist:
+					f15.write(str(s) + " ***next*** ")
+				for s in step_pref_guide:
+					f15.write(str(s) + " ***next*** ")
+				f15.write('0' + " ***next*** \n")
+				f12.write(speaker+'\n')
+			if speaker.strip() == "Tourist":
+				print (counter)
+				nl_pref_tourist = nl_pref_tourist[1:]  
+				i_pref_tourist = i_pref_tourist[1:]
+				s_pref_tourist = s_pref_tourist[1:]
+				step_pref_tourist = step_pref_tourist[1:]
+				nl_pref_tourist.append(nl_pref)
+				i_pref_tourist.append(i_pref)
+				s_pref_tourist.append(s_pref)
+				step_pref_tourist.append(0)
+			else:
+				print(counter)
+				nl_pref_guide = nl_pref_guide[1:]  
+				i_pref_guide = i_pref_guide[1:]
+				s_pref_guide = s_pref_guide[1:]
+				step_pref_guide = step_pref_guide[1:]
+				nl_pref_guide.append(nl_pref)
+				i_pref_guide.append(i_pref)
+				s_pref_guide.append(s_pref)
+				step_pref_guide.append(0)
+			for n in range(len(step_pref_tourist)):
+				step_pref_tourist[n] = step_pref_tourist[n] + 1
+				step_pref_guide[n] = step_pref_guide[n] + 1
 
 def sent_2_speaker(json_dir):
 	with open(json_dir + '/log.json', 'r') as jsonfile:
@@ -220,12 +262,6 @@ def sent_2_speaker(json_dir):
 		speaker.append(info)
 	return speaker
 
-# parser = argparse.ArgumentParser()
-# group = parser.add_mutually_exclusive_group()
-# group.add_argument("--guide",action="store_true",help="guide conversation only")
-# group.add_argument("--tourist",action="store_true",help="tourist conversation only")
-# group.add_argument("--all",action="store_true",help="all conversation")
-# args = parser.parse_args()
 FinalLines = []
 FinalTags = []
 finalintent = []
@@ -233,15 +269,15 @@ finalintent = []
 f1 = open('../All/Data/train/seq.in','w')
 f2 = open('../All/Data/test/seq.in','w')
 f3 = open('../All/Data/valid/seq.in','w')
-f4 = open('../All/Data/seq.in','w')
+f4 = open('../All/Data/train/talker','w')
 f5 = open('../All/Data/train/seq.out','w')
 f6 = open('../All/Data/test/seq.out','w')
 f7 = open('../All/Data/valid/seq.out','w')
-f8 = open('../All/Data/seq.out','w')
+f8 = open('../All/Data/test/talker','w')
 f9 = open('../All/Data/train/intent','w')
 f10 = open('../All/Data/test/intent','w')
 f11 = open('../All/Data/valid/intent','w')
-f12 = open('../All/Data/intent','w')
+f12 = open('../All/Data/valid/talker','w')
 f13 = open('../All/Data/train/info','w')
 f14 = open('../All/Data/test/info','w')
 f15 = open('../All/Data/valid/info','w')

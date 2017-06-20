@@ -2,48 +2,29 @@ import numpy as np
 import random
 
 class DataPrepare(object):
-  def __init__(self,path):
+  def __init__(self,path,glove):
     self.seed = 0
     self.maxlength = 50
     self.slotdict,self.rev_slotdict,self.slot_len,self.intentdict,self.rev_intentdict,self.intent_len = self.get_slots()
-    self.worddict = self.get_glove(path[0])
+    self.worddict = glove
     self.encoded,self.reverse = self.set_word2vec(path[1])
     self.slotvalue = self.get_svalue(path[2])
     self.intentvalue = self.get_ivalue(path[3])
     self.sen_info = self.get_info(path[4])
+    self.talker = self.get_talker(path[5])
 
-  def get_glove(self,GloVe):
-    d = {}
-    dict_dim = 200
-    with open(GloVe,'r') as f:
-        for l in f:
-            tmp = l.strip().split()
-            d[tmp[0]] = [float(dim) for dim in tmp[1:]]
-    n = np.zeros(dict_dim)
-    n[dict_dim-1] = 999
-    d['<unk>'] = n
-    d['Empty'] = np.zeros(dict_dim)
-    add_s = ['let','that','it','there','here','how','he','she','what']
-    add_nt = ['do','did','were','have','does','would','was','has','should','is','are']
-    add_re = ['we','they','you']
-    add_ha = ['i','who','they','you','we']
-    add_am = ['i']
-    add_will = ['you','he','i','she','we','there','it','they']
-    add_d = ['you','i','they','that','we']
-    prefix = [add_s,add_nt,add_re,add_ha,add_am,add_will,add_d]
-    syms = ['\'s','not','are','have','am','will','would']
-    short = ['\'s','n\'t','\'re','\'ve','\'m','\'ll','\'d']
-    for i in range(len(prefix)):
-      for word in prefix[i]:
-        d[word+short[i]] = np.add(d[word],d[syms[i]])
-    d['won\'t'] = np.add(d['will'],d['not'])
-    d['can\'t'] = np.add(d['can'],d['not'])
-    return d
+  def get_talker(self,tpath):
+    tf = open(tpath,'r')
+    l = []
+    for info in tf:
+      info = info.strip()
+      l.append(info)
+    return l
 
   def get_slots(self):
     BIO = ['B','I','O']
     MAIN = ['AREA','DET','FEE','FOOD','LOC','TIME','TRSP','WEATHER']
-    SUBCAT = ['COUNTRY','CITY','DISTRICT','NEIGHBORHOOD','ACCESS', 'BELIEF', 'BUILDING', 'EVENT', 'PRICE', 'NATURE', 'HISTORY', 'MEAL', 'MONUMENT','STROLL','VIEW','ATTRACTION', 'SERVICES', 'PRODUCTS','TEMPLE', 'RESTAURANT', 'SHOP', 'CULTURAL', 'GARDEN', 'ATTRACTION', 'HOTEL', 'WATERSIDE', 'EDUCATION', 'ROAD', 'AIRPORT','DATE', 'INTERVAL', 'START', 'END', 'OPEN', 'CLOSE','STATION', 'TYPE','MAIN']
+    SUBCAT = ['COUNTRY','CITY','DISTRICT','NEIGHBORHOOD','ACCESS', 'BELIEF', 'BUILDING', 'EVENT', 'PRICE', 'NATURE', 'HISTORY', 'MEAL', 'MONUMENT','STROLL','VIEW','ATTRACTION', 'SERVICES', 'PRODUCTS','TEMPLE', 'RESTAURANT', 'SHOP', 'CULTURAL', 'GARDEN', 'HOTEL', 'WATERSIDE', 'EDUCATION', 'ROAD', 'AIRPORT','DATE', 'INTERVAL', 'START', 'END', 'OPEN', 'CLOSE','STATION', 'TYPE','MAIN']
     REL = ['NEAR', 'FAR', 'NEXT', 'OPPOSITE', 'NORTH', 'SOUTH', 'EAST','WEST','BEFORE', 'AFTER', 'AROUND','NONE']
     FROM_TO = ['FROM', 'TO','NONE']
     SAC = ['QST','RES','INI','FOL','None']
@@ -71,6 +52,7 @@ class DataPrepare(object):
         i_rev_d[count] = tag
         count += 1
       i_d.append(d)
+    assert slot_len == len(BIO) + len(MAIN) + len(SUBCAT) + len(REL) + len(FROM_TO)
     return s_d,s_rev_d,slot_len,i_d,i_rev_d,count
 
   def set_word2vec(self,seq_in):
@@ -145,7 +127,7 @@ class DataPrepare(object):
             batch.append(vec)
           for _ in range(self.maxlength - len(l)):
             tmp = np.zeros(self.slot_len)
-            tmp[self.slotdict[0]['O']] += 1
+            #tmp[self.slotdict[0]['O']] += 1
             batch.append(tmp)
           assert len(batch) == self.maxlength
           batches.append(batch)
@@ -206,4 +188,4 @@ class DataPrepare(object):
   #   return seq_in,seq_out,intent
 
   def get_all(self):
-    return self.encoded,self.slotvalue,self.intentvalue,self.sen_info,self.reverse
+    return self.encoded,self.slotvalue,self.intentvalue,self.sen_info,self.reverse,self.talker
