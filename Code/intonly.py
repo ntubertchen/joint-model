@@ -194,8 +194,6 @@ with tf.Session(config=config) as sess:
             _,summary = sess.run([_intent_optimizer,merged],feed_dict={nl_input:tour_in,y_intent: int_in,sentence_len:[_sentence_len]})
             train_writer.add_summary(summary,i + batch_size*step*len(batch_seq))
             if i % 3000 == 0 and i != 0:
-                slotans = open('../pred/s_ans','w')
-                intpred = open('../pred/int','w')
                 int_logit_list = []
                 int_label_list = []
                 for j in range(len(t_in)):
