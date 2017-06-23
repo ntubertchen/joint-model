@@ -76,18 +76,39 @@ class slu_model(object):
         tourist_output = self.hist_biRNN('tourist')
         guide_output = self.hist_biRNN('guide')
         concat_output = tf.concat([tourist_output, guide_output], axis=1)
+
+        #########################################
+        #            no attention               #
+        #########################################
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, activation=tf.nn.relu)
+
+        #########################################
+        #       attention at entry-level        #
+        #########################################
+        # attention = tf.layers.dense(inputs=concat_output, units=tf.shape(concat_output)[0], activation=tf.nn.relu)
+        # atten_hist = tf.multiply(concat_output, attention)
+        # history_summary = tf.layers.dense(inputs=atten_hist, units=self.intent_dim, activation=tf.nn.relu)
+
+        #########################################
+        #       attention at role-level         #
+        #########################################
+        # attention = tf.layers.dense(inputs=concat_output, units=2, activation=tf.nn.relu)
+        # atten_hist = tf.concat([
+        #     tf.multiply(tourist_output, tf.gather(attention, 0)),
+        #     tf.multiply(tourist_output, tf.gather(attention, 1))])
+        # history_summary = tf.layers.dense(inputs=atten_hist, units=self.intent_dim, activation=tf.nn.relu)
+
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, activation=tf.nn.relu)
 
     def add_loss(self):
         self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output)
-        
+
     def add_train_op(self):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.999, momentum=0.1, epsilon=1e-8)
         gvs = optimizer.compute_gradients(self.loss)
         # clip the gradients
-	def ClipIfNotNone(grad):
+        def ClipIfNotNone(grad):
             if grad is None:
                 return grad
             return tf.clip_by_value(grad, -1, 1)
