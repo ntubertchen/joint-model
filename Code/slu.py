@@ -25,22 +25,40 @@ parser.add_argument('--slot', action='store_false', help='slot training')
 args = parser.parse_args()
 
 def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
-    train_intent = list()
+    train_tourist = list()
+    train_guide = list()
     train_nl = list()
     train_target = list()
     target_idx = list()
+    tourist_len = list()
+    guide_len = list()
+    nl_len = list()
+
     for i in batch_intent:
-        temp_list = list()
-        for tup in i[:-1]:
+        temp_tourist_list = list()
+        temp_guide_list = list()
+        history = i[:-1]
+        hist_len = len(history) / 2 # tourist, guide
+        # tourist part
+        for tup in history[:hist_len]:
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_list += d
-        # pad the intent sequence
-        train_intent.append(temp_list+[intent_pad_id for _ in range(max_seq_len - len(temp_list))])
+            temp_tourist_list += d
+        # guide part
+        for tup in history[hist_len:]:
+            d = [tup[0]] + [attri for attri in tup[1]]
+            temp_guide_list += d
+
+        # pad the sequence
+        train_tourist.append(temp_tourist_list+[intent_pad_id for _ in range(max_seq_len - len(temp_tourist_list))])
+        tourist_len.append(len(temp_tourist_list))
+        train_guide.append(temp_guide_list+[intent_pad_id for _ in range(max_seq_len - len(temp_guide_list))])
+        guide_len.append(len(temp_guide_list))
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
 
     for i in batch_nl:
         nl = i[-1]
         train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
+        nl_len.append(len(nl))
 
     # one-hot encode train_target
     for i in target_idx:
@@ -49,7 +67,7 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
             target_l[idx] = 1.0
         train_target.append(target_l)
 
-    return train_intent, train_nl, train_target
+    return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
 if __name__ == '__main__':
     sess = tf.Session(config=config)
@@ -71,13 +89,17 @@ if __name__ == '__main__':
             train_intent = None
             train_nl = None
             if use_intent is True:
-                train_intent, train_nl, train_target = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             else:
                 pass
             sess.run(model.train_op, 
                     feed_dict={
-                        model.input_intent:train_intent,
+                        model.tourist_input:train_tourist,
+                        model.guide_input:train_guide,
                         model.input_nl:train_nl,
+                        model.tourist_len:tourist_len,
+                        model.guide_len:guide_len,
+                        model.nl_len:nl_len,
                         model.labels:train_target
                         })
         print (cur_epoch)

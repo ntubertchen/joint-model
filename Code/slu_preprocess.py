@@ -31,7 +31,7 @@ class slu_data():
         print 'train data size:', len(self.train_data)
         print 'valid data size:', len(self.valid_data)
         print 'test data size:', len(self.test_data)
-        self.batch_size = 1
+        self.batch_size = 128
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle

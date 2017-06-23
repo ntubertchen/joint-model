@@ -27,22 +27,30 @@ class slu_model(object):
 
     def add_placeholders(self):
         # intent sequence, if we take previous n utterences as history, than its length is n*intent_dim
-        self.input_intent = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.tourist_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.guide_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.tourist_len = tf.placeholder(tf.int32, [None])
+        self.guide_len = tf.placeholder(tf.int32, [None])
+        self.nl_len = tf.placeholder(tf.int32, [None])
         # natural language input sequence, which is also the utterance we are going to predict(intents)
         self.input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
         # pretrained word embedding matrix
         self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
         # correct label that used to calculate sigmoid cross entropy loss, should be [batch_size, intent_dim]
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
-        self.batch_size = tf.placeholder(tf.int32)
 
     def hist_biRNN(self, scope):
         with tf.variable_scope(scope):
-            inputs = tf.nn.embedding_lookup(self.intent_matrix, self.input_intent)
+            if scope == 'tourist':
+                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
+                seq_len = self.tourist_len
+            elif scope == 'guide':
+                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
+                seq_len = self.guide_len
 
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
             #TODO: add or concat here?
             #final_fw = tf.concat(final_states[0], axis=1)
             final_fw = tf.add(final_states[0][0], final_states[0][1])
@@ -58,7 +66,7 @@ class slu_model(object):
             concat_input = tf.concat([inputs, replicate_summary], axis=2) # [batch_size, self.max_seq_len, self.intent_dim+self.embedding_dim]
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, dtype=tf.float32)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, sequence_length=self.nl_len, dtype=tf.float32)
             final_fw = tf.add(final_states[0][0], final_states[0][1])
             final_bw = tf.add(final_states[1][0], final_states[1][1])
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
