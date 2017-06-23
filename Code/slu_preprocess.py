@@ -19,26 +19,61 @@ class slu_data():
         self.word2id = defaultdict()
         self.id2word = defaultdict()
         self.embedding_matrix = None
-        #self.read_GloVe(glove)
+        self.read_GloVe(glove)
         self.train_data = self.convertnl2id(train_nl)
         self.valid_data = self.convertnl2id(valid_nl)
         self.test_data = self.convertnl2id(test_nl)
+        assert len(self.train_data) == len(self.train_intent)
+        assert len(self.valid_data) == len(self.valid_intent)
+        assert len(self.test_data) == len(self.test_intent)
         print 'train data size:', len(self.train_data)
         print 'valid data size:', len(self.valid_data)
         print 'test data size:', len(self.test_data)
         self.batch_size = 1
-        self.all_batch_indices = [i for i in range(len(self.train_data))]
-        #self.get_batch()
+        self.train_batch_indices = [i for i in range(len(self.train_data))]
+        self.valid_batch_indices = [i for i in range(len(self.valid_data))]
+        self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
+        #nl, intent = self.get_train_batch()
+        #self.get_valid_batch()
+        #self.get_test_batch()
 
-    def get_batch(self):
+    def get_train_batch(self):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
-        random.shuffle(self.all_batch_indices)
-        batch_indices = self.all_batch_indices[:self.batch_size]
-        ret_batch = list()
+        random.shuffle(self.train_batch_indices)
+        batch_indices = self.train_batch_indices[:self.batch_size]
+        ret_nl_batch = list()
+        ret_intent_batch = list()
         for batch_idx in batch_indices:
             nl_sentences = self.train_data[batch_idx]
-            ret_batch.append(nl_sentences)
-        return ret_batch
+            intent = self.train_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+        return ret_nl_batch, ret_intent_batch
+
+    def get_valid_batch(self):
+        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
+        random.shuffle(self.valid_batch_indices)
+        batch_indices = self.valid_batch_indices[:self.batch_size]
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        for batch_idx in batch_indices:
+            nl_sentences = self.valid_data[batch_idx]
+            intent = self.valid_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+        return ret_nl_batch, ret_intent_batch
+
+    def get_test_batch(self):
+        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
+        batch_indices = self.test_indices
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        for batch_idx in batch_indices:
+            nl_sentences = self.test_data[batch_idx]
+            intent = self.test_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+        return ret_nl_batch, ret_intent_batch
 
     def convertintent2id(self, data_file):
         intent_corpus = list()
@@ -66,13 +101,17 @@ class slu_data():
             self.intent_attri_dict = attri_dict
         
         # convert act and attributes to id
+        ret_intent = list()
         for intents in intent_corpus:
+            temp_list = list()
             for intent in intents:
                 act_attri = intent.split('-')
                 act = act_attri[0] # a string
                 attributes = act_attri[1:] # a list, may contain several attributes
                 t = (self.intent_act_dict[act], [self.intent_attri_dict[attri] for attri in attributes])
-                print (t)
+                temp_list.append(t)
+            ret_intent.append(temp_list)
+        return ret_intent
 
     def read_GloVe(self, glove):
         # read in GloVe dict
