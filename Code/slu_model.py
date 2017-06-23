@@ -1,71 +1,88 @@
 import tensorflow as tf
 import numpy as np
+from tensorflow.contrib import rnn
 
 class slu_model(object):
-    def __init__(self):
+    def __init__(self, max_seq_len, intent_dim):
         self.hidden_size = 128
-        self.intent_dim = 30 # one hot encoding
+        self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
-        self.total_word = 10000 # total word embedding vectors
+        self.total_word = 400001 # total word embedding vectors
+        self.max_seq_len = max_seq_len
         self.add_variables()
         self.add_placeholders()
         self.add_variables()
         self.build_graph()
         self.add_loss()
         self.add_train_op()
-        
+        self.init_embedding()
+        self.init_model = tf.global_variables_initializer()
+
     def init_embedding(self):
         self.init_embedding = self.embedding_matrix.assign(self.read_embedding_matrix)
 
     def add_variables(self):
-        self.embedding_matrix = tf.get_variable(tf.float32, [self.total_word, self.embedding_dim], "embedding")
+        self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, name="glove_embedding")
+        self.intent_matrix = tf.Variable(tf.truncated_normal([self.intent_dim, self.embedding_dim]), dtype=tf.float32, name="intent_embedding")
 
     def add_placeholders(self):
         # intent sequence, if we take previous n utterences as history, than its length is n*intent_dim
-        self.input_x = tf.placeholder(tf.float32, [None, self.intent_dim])
+        self.input_intent = tf.placeholder(tf.int32, [None, self.max_seq_len])
         # natural language input sequence, which is also the utterance we are going to predict(intents)
-        self.input_nl = tf.placeholder(tf.float32, [None])
+        self.input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
         # pretrained word embedding matrix
-        self.read_embedding_matrix = tf.placeholder(tf.float32, [self.embedding_dim, self.total_word])
+        self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
         # correct label that used to calculate sigmoid cross entropy loss, should be [batch_size, intent_dim]
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
+        self.batch_size = tf.placeholder(tf.int32)
 
-    def hist_biRNN(self):
-        lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-        lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-        _, final_states = bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, self.input_x)
-        outputs = tf.concat(final_states) # concatenate forward and backward final states
-        return outputs
+    def hist_biRNN(self, scope):
+        with tf.variable_scope(scope):
+            inputs = tf.nn.embedding_lookup(self.intent_matrix, self.input_intent)
+
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+            #TODO: add or concat here?
+            #final_fw = tf.concat(final_states[0], axis=1)
+            final_fw = tf.add(final_states[0][0], final_states[0][1])
+            final_bw = tf.add(final_states[1][0], final_states[1][1])
+            outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            return outputs
 
     def nl_biRNN(self, history_summary):
-        inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl)
-        # we want to concat history_summary vector to every single input word vector
-        # some trick here
-        # first we need to replicate the history summary to [batch_size, seq_len]
-        #TODO: batch_size = 1 or ?, need to pad the input batch to make sure correct concat
-        tf.reduce_prod(tf.shape(inputs))
-        tf.tile(history_summary, [shape[0], shape[1], shape[2]])
-        concat_input = tf.concat(inputs, history_summary)
-        lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-        lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-        _, final_states = bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input)
-        outputs = tf.concat(final_states) # concatenate forward and backward final states
-        return outputs
+        with tf.variable_scope("nl"):
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+            history_summary = tf.expand_dims(history_summary, axis=1)
+            replicate_summary = tf.tile(history_summary, [1, self.max_seq_len, 1]) # [batch_size, self.max_seq_len, self.intent_dim]
+            concat_input = tf.concat([inputs, replicate_summary], axis=2) # [batch_size, self.max_seq_len, self.intent_dim+self.embedding_dim]
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, dtype=tf.float32)
+            final_fw = tf.add(final_states[0][0], final_states[0][1])
+            final_bw = tf.add(final_states[1][0], final_states[1][1])
+            outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            return outputs
 
     def build_graph(self):
-        tourist_output = self.hist_biRNN()
-        guide_output = self.hist_biRNN()
-        concat_output = tf.concat(tourist_output, guide_output)
+        tourist_output = self.hist_biRNN('tourist')
+        guide_output = self.hist_biRNN('guide')
+        concat_output = tf.concat([tourist_output, guide_output], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, activation=tf.nn.relu)
-        self.final_output = self.nl_biRNN(history_summary)
+        final_output = self.nl_biRNN(history_summary)
+        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, activation=tf.nn.relu)
 
     def add_loss(self):
-        self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.final_output)
+        self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output)
         
     def add_train_op(self):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.999, momentum=0.1, epsilon=1e-8)
         gvs = optimizer.compute_gradients(self.loss)
         # clip the gradients
-        capped_gvs = [(tf.clip_by_value(grad, 0., 1.), var) for grad, var in gvs]
+	def ClipIfNotNone(grad):
+            if grad is None:
+                return grad
+            return tf.clip_by_value(grad, -1, 1)
+        capped_gvs = [(ClipIfNotNone(grad), var) for grad, var in gvs]
         optimizer.apply_gradients(capped_gvs)
         self.train_op = optimizer.minimize(self.loss)

@@ -12,6 +12,8 @@ class slu_data():
         test_intent = open('Data/test/intent', 'r')
         self.intent_act_dict = None
         self.intent_attri_dict = None
+        self.total_intent = None
+        self.total_word = None
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
         self.test_intent = self.convertintent2id(test_intent)
@@ -99,6 +101,7 @@ class slu_data():
                             attri_dict[attri] = len(attri_dict)
             self.intent_act_dict = act_dict
             self.intent_attri_dict = attri_dict
+            self.total_intent = len(act_dict)+len(attri_dict)
         
         # convert act and attributes to id
         ret_intent = list()
@@ -108,7 +111,7 @@ class slu_data():
                 act_attri = intent.split('-')
                 act = act_attri[0] # a string
                 attributes = act_attri[1:] # a list, may contain several attributes
-                t = (self.intent_act_dict[act], [self.intent_attri_dict[attri] for attri in attributes])
+                t = (self.intent_act_dict[act], [self.intent_attri_dict[attri]+len(self.intent_act_dict) for attri in attributes])
                 temp_list.append(t)
             ret_intent.append(temp_list)
         return ret_intent
@@ -127,6 +130,7 @@ class slu_data():
             embedding = [float(val) for val in splitLine[1:]]
             embedding_matrix.append(embedding)
         print "Done.", len(embedding_matrix)," words loaded from GloVe!"
+        self.total_word = len(embedding_matrix)
         self.word2id = word2id
         self.id2word = id2word
         self.embedding_matrix = embedding_matrix
