@@ -31,7 +31,6 @@ class slu_data():
         print 'train data size:', len(self.train_data)
         print 'valid data size:', len(self.valid_data)
         print 'test data size:', len(self.test_data)
-        self.batch_size = 128
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
@@ -39,10 +38,10 @@ class slu_data():
         #self.get_valid_batch()
         #self.get_test_batch()
 
-    def get_train_batch(self):
+    def get_train_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.train_batch_indices)
-        batch_indices = self.train_batch_indices[:self.batch_size]
+        batch_indices = self.train_batch_indices[:batch_size]
         ret_nl_batch = list()
         ret_intent_batch = list()
         for batch_idx in batch_indices:
@@ -52,10 +51,10 @@ class slu_data():
             ret_intent_batch.append(intent)
         return ret_nl_batch, ret_intent_batch
 
-    def get_valid_batch(self):
+    def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.valid_batch_indices)
-        batch_indices = self.valid_batch_indices[:self.batch_size]
+        batch_indices = self.valid_batch_indices[:batch_size]
         ret_nl_batch = list()
         ret_intent_batch = list()
         for batch_idx in batch_indices:

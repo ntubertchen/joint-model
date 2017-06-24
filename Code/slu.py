@@ -84,7 +84,7 @@ if __name__ == '__main__':
     use_intent = True
     for cur_epoch in range(epoch):
         # get the data
-        batch_nl, batch_intent = data.get_train_batch()
+        batch_nl, batch_intent = data.get_train_batch(128)
         train_intent = None
         train_nl = None
         if use_intent is True:
@@ -108,11 +108,10 @@ if __name__ == '__main__':
         for pred, label in zip(intent_output, train_target):
             label_bin = Binarizer(threshold=0.5)
             pred_bin = Binarizer(threshold=0.2)
-            logit = pred_bin.fit_transform(pred)
-            label = label_bin.fit_transform(label)
+            logit = pred_bin.fit_transform([pred])
+            label = label_bin.fit_transform([label])
             pred_vec = np.append(pred_vec, logit)
             label_vec = np.append(label_vec, label)
-
         print "f1 score is:", f1_score(pred_vec, label_vec, average='binary')
         print "cur_epoch is:", cur_epoch
 
