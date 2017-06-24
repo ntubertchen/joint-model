@@ -51,10 +51,8 @@ class slu_model(object):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
-            #TODO: add or concat here?
-            #final_fw = tf.concat(final_states[0], axis=1)
-            final_fw = tf.add(final_states[0][0], final_states[0][1])
-            final_bw = tf.add(final_states[1][0], final_states[1][1])
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
@@ -67,8 +65,8 @@ class slu_model(object):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, sequence_length=self.nl_len, dtype=tf.float32)
-            final_fw = tf.add(final_states[0][0], final_states[0][1])
-            final_bw = tf.add(final_states[1][0], final_states[1][1])
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
@@ -84,7 +82,8 @@ class slu_model(object):
         self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output)
         
     def add_train_op(self):
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.999, momentum=0.1, epsilon=1e-8)
+        #optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.999, momentum=0.1, epsilon=1e-8)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.005)
         gvs = optimizer.compute_gradients(self.loss)
         # clip the gradients
 	def ClipIfNotNone(grad):

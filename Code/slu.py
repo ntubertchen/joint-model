@@ -107,7 +107,7 @@ if __name__ == '__main__':
         label_vec = np.array(list())
         for pred, label in zip(intent_output, train_target):
             label_bin = Binarizer(threshold=0.5)
-            pred_bin = Binarizer(threshold=0.2)
+            pred_bin = Binarizer(threshold=0.1)
             logit = pred_bin.fit_transform([pred])
             label = label_bin.fit_transform([label])
             pred_vec = np.append(pred_vec, logit)
