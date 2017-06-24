@@ -82,7 +82,6 @@ class slu_model(object):
         self.loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output)
         
     def add_train_op(self):
-        #optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.999, momentum=0.1, epsilon=1e-8)
         optimizer = tf.train.AdamOptimizer(learning_rate=0.005)
         gvs = optimizer.compute_gradients(self.loss)
         # clip the gradients
