@@ -83,26 +83,38 @@ if __name__ == '__main__':
     epoch = 300
     use_intent = True
     for cur_epoch in range(epoch):
-        for i in range(256):
-            # get the data
-            batch_nl, batch_intent = data.get_train_batch()
-            train_intent = None
-            train_nl = None
-            if use_intent is True:
-                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-            else:
-                pass
-            sess.run(model.train_op, 
-                    feed_dict={
-                        model.tourist_input:train_tourist,
-                        model.guide_input:train_guide,
-                        model.input_nl:train_nl,
-                        model.tourist_len:tourist_len,
-                        model.guide_len:guide_len,
-                        model.nl_len:nl_len,
-                        model.labels:train_target
-                        })
-        print (cur_epoch)
+        # get the data
+        batch_nl, batch_intent = data.get_train_batch()
+        train_intent = None
+        train_nl = None
+        if use_intent is True:
+            train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        else:
+            pass
+        _, intent_output = sess.run([model.train_op, model.intent_output],
+                feed_dict={
+                    model.tourist_input:train_tourist,
+                    model.guide_input:train_guide,
+                    model.input_nl:train_nl,
+                    model.tourist_len:tourist_len,
+                    model.guide_len:guide_len,
+                    model.nl_len:nl_len,
+                    model.labels:train_target
+                    })
+   
+        # calculate batch F1 score
+        pred_vec = np.array(list())
+        label_vec = np.array(list())
+        for pred, label in zip(intent_output, train_target):
+            label_bin = Binarizer(threshold=0.5)
+            pred_bin = Binarizer(threshold=0.2)
+            logit = pred_bin.fit_transform(pred)
+            label = label_bin.fit_transform(label)
+            pred_vec = np.append(pred_vec, logit)
+            label_vec = np.append(label_vec, label)
+
+        print "f1 score is:", f1_score(pred_vec, label_vec, average='binary')
+        print "cur_epoch is:", cur_epoch
 
     sess.close()
     
