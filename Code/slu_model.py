@@ -86,9 +86,12 @@ class slu_model(object):
         gvs = optimizer.compute_gradients(self.loss)
         # clip the gradients
 	def ClipIfNotNone(grad):
+            '''
             if grad is None:
                 return grad
             return tf.clip_by_value(grad, -1, 1)
+            '''
+            return grad
         capped_gvs = [(ClipIfNotNone(grad), var) for grad, var in gvs]
         optimizer.apply_gradients(capped_gvs)
         self.train_op = optimizer.minimize(self.loss)
