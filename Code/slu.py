@@ -136,21 +136,10 @@ if __name__ == '__main__':
             train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         else:
             train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-        x = np.array(train_tourist)
-        x = np.array(train_guide)
-        x = np.array(train_nl)
-        x = np.array(train_target)
-        x = np.array(tourist_len)
-        x = np.array(guide_len)
-        x = np.array(nl_len)
 
         _, intent_output = sess.run([model.train_op, model.intent_output],
                 feed_dict={
-                    model.tourist_input:train_tourist,
-                    model.guide_input:train_guide,
                     model.input_nl:train_nl,
-                    model.tourist_len:tourist_len,
-                    model.guide_len:guide_len,
                     model.labels:train_target,
                     model.nl_len:nl_len,
                     })
@@ -177,11 +166,7 @@ if __name__ == '__main__':
 
     test_output = sess.run(model.intent_output,
             feed_dict={
-                model.tourist_input:test_tourist,
-                model.guide_input:test_guide,
                 model.input_nl:test_nl,
-                model.tourist_len:tourist_len,
-                model.guide_len:guide_len,
                 model.nl_len:nl_len,
                 model.labels:test_target
                 })
