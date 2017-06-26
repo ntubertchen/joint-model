@@ -116,6 +116,7 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     data = slu_data()
     max_seq_len = 60
+    batch_size = 20
     total_intent = data.total_intent
     total_word = data.total_word
     model = slu_model(max_seq_len, total_intent)
@@ -123,13 +124,41 @@ if __name__ == '__main__':
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
 
-    epoch = 50
+    epoch = 20
     use_intent = False # True: use intent tag as input, False: use nl as input
+    max_test_score = 0
 
     # Train
     for cur_epoch in range(epoch):
+        # intent_outputs = np.array(list())
+        # train_targets = np.array(list())
+        intent_outputs = []
+        train_targets = []
+
+        data.shuffle_data()
+        for _ in range(data.train_data_size/batch_size):
+        # for _ in range(100):
+            # get the data
+            batch_nl, batch_intent = data.get_train_batch(batch_size)
+            train_intent = None
+            train_nl = None
+            if use_intent == True:
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            else:
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+
+            _, intent_output = sess.run([model.train_op, model.intent_output],
+                feed_dict={
+                    model.input_nl:train_nl,
+                    model.labels:train_target,
+                    model.nl_len:nl_len,
+                    })
+
+            intent_outputs.extend(intent_output)
+            train_targets.extend(train_target)
+        '''
         # get the data
-        batch_nl, batch_intent = data.get_train_batch(256)
+        batch_nl, batch_intent = data.get_train_batch(batch_size)
         train_intent = None
         train_nl = None
         if use_intent == True:
@@ -143,11 +172,15 @@ if __name__ == '__main__':
                     model.labels:train_target,
                     model.nl_len:nl_len,
                     })
-   
+        '''
+        # print intent_output
+        # print '--'
+
         # calculate batch F1 score
         pred_vec = np.array(list())
         label_vec = np.array(list())
-        for pred, label in zip(intent_output, train_target):
+        # for pred, label in zip(intent_output, train_target):
+        for pred, label in zip(intent_outputs, train_targets):
             label_bin = Binarizer(threshold=0.5)
             pred_bin = Binarizer(threshold=0.2)
             logit = pred_bin.fit_transform([pred])
@@ -157,6 +190,38 @@ if __name__ == '__main__':
         print "f1 score is:", f1_score(pred_vec, label_vec, average='binary')
         print "cur_epoch is:", cur_epoch
 
+
+        # Test
+        test_nl, test_intent = data.get_test_batch()
+        if use_intent == True:
+            test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_intent(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        else:
+            test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_nl(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+
+        test_output = sess.run(model.intent_output,
+                feed_dict={
+                    model.input_nl:test_nl,
+                    model.nl_len:nl_len,
+                    model.labels:test_target
+                    })
+
+        # calculate test F1 score
+        pred_vec = np.array(list())
+        label_vec = np.array(list())
+        # for pred, label in zip(test_output, train_target):
+        for pred, label in zip(test_output, test_target):
+            label_bin = Binarizer(threshold=0.5)
+            pred_bin = Binarizer(threshold=0.2)
+            logit = pred_bin.fit_transform([pred])
+            label = label_bin.fit_transform([label])
+            pred_vec = np.append(pred_vec, logit)
+            label_vec = np.append(label_vec, label)
+        print "test f1 score is:", f1_score(pred_vec, label_vec, average='binary')
+        if f1_score(pred_vec, label_vec, average='binary') > max_test_score:
+            max_test_score = f1_score(pred_vec, label_vec, average='binary')
+        print "max test score: ", max_test_score
+
+    '''
     # Test
     test_nl, test_intent = data.get_test_batch()
     if use_intent == True:
@@ -174,7 +239,8 @@ if __name__ == '__main__':
     # calculate test F1 score
     pred_vec = np.array(list())
     label_vec = np.array(list())
-    for pred, label in zip(test_output, train_target):
+    # for pred, label in zip(test_output, train_target):
+    for pred, label in zip(test_output, test_target):
         label_bin = Binarizer(threshold=0.5)
         pred_bin = Binarizer(threshold=0.2)
         logit = pred_bin.fit_transform([pred])
@@ -182,4 +248,5 @@ if __name__ == '__main__':
         pred_vec = np.append(pred_vec, logit)
         label_vec = np.append(label_vec, label)
     print "test f1 score is:", f1_score(pred_vec, label_vec, average='binary')
+    '''
     sess.close()

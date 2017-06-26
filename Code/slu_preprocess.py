@@ -34,13 +34,19 @@ class slu_data():
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
+        self.train_data_size = len(self.train_data)
+        self.valid_data_size = len(self.valid_intent)
+        self.test_data_size = len(self.test_data)
         #nl, intent = self.get_train_batch()
         #self.get_valid_batch()
         #self.get_test_batch()
 
+    def shuffle_data(self):
+        random.shuffle(self.train_batch_indices)
+
     def get_train_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
-        random.shuffle(self.train_batch_indices)
+        # random.shuffle(self.train_batch_indices)
         batch_indices = self.train_batch_indices[:batch_size]
         ret_nl_batch = list()
         ret_intent_batch = list()
@@ -82,7 +88,7 @@ class slu_data():
             temp_intent = line.strip('\n').split('***next***')[:-1]
             temp_intent = map(lambda x:x.strip(' ').lstrip(' '), temp_intent)
             intent_corpus.append(temp_intent)
-        
+
         if self.intent_act_dict is None or self.intent_attri_dict is None:
             assert self.intent_act_dict is None and self.intent_attri_dict is None
             # build intent dict
@@ -101,7 +107,7 @@ class slu_data():
             self.intent_act_dict = act_dict
             self.intent_attri_dict = attri_dict
             self.total_intent = len(act_dict)+len(attri_dict)
-        
+
         # convert act and attributes to id
         ret_intent = list()
         for intents in intent_corpus:
@@ -141,7 +147,7 @@ class slu_data():
             temp_nl = line.strip('\n').split('***next***')[:-1] # temp_nl contains many sentences
             nl = self.clean_nl(temp_nl)
             nl_corpus.append(nl)
-        
+
         # start from idx 1, since 0 is for <unk>
         data = list()
         for nl_sentences in nl_corpus:
@@ -157,7 +163,7 @@ class slu_data():
                     one_utterance.append(word_id)
                 one_training_data.append(one_utterance)
             data.append(one_training_data)
-        return data    
+        return data
 
     def clean_nl(self, temp_nl):
         ret = list()
@@ -195,7 +201,7 @@ class slu_data():
             if '  ' in temp:
                 temp = temp.replace('  ', ' ')
             temp = temp.strip(' ').lstrip(' ')
-            ret.append(temp) 
+            ret.append(temp)
 
         return ret
 
