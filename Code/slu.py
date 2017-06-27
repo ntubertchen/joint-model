@@ -112,6 +112,16 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
 
     return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
+def one_hot(idx, T):
+    # intent dim is 26, 5 is act, 21 is attribute
+    if T == 'act':
+        ret = np.zeros(5)
+        ret[idx] = 1.0
+    elif T == 'attribute':
+        ret = np.zeros(21)
+        ret[idx] = 1.0
+    return ret
+
 if __name__ == '__main__':
     sess = tf.Session(config=config)
     data = slu_data()
@@ -123,7 +133,7 @@ if __name__ == '__main__':
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
 
-    epoch = 50
+    epoch = 25
     use_intent = False # True: use intent tag as input, False: use nl as input
 
     # Train
@@ -148,11 +158,15 @@ if __name__ == '__main__':
         pred_vec = np.array(list())
         label_vec = np.array(list())
         for pred, label in zip(intent_output, train_target):
-            label_bin = Binarizer(threshold=0.5)
-            pred_bin = Binarizer(threshold=0.2)
-            logit = pred_bin.fit_transform([pred])
-            label = label_bin.fit_transform([label])
-            pred_vec = np.append(pred_vec, logit)
+            pred_act = pred[:5]
+            pred_attribute = pred[5:]
+            binary = Binarizer(threshold=0.5)
+            act_logit = one_hot(np.argmax(pred_act), 'act')
+            attribute_logit = binary.fit_transform([pred_attribute])
+            if np.sum(attribute_logit) == 0:
+                attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
+            label = binary.fit_transform([label])
+            pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
         print "f1 score is:", f1_score(pred_vec, label_vec, average='binary')
         print "cur_epoch is:", cur_epoch
