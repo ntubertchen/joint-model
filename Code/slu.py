@@ -120,7 +120,7 @@ if __name__ == '__main__':
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
 
-    epoch = 5
+    epoch = 30
     use_intent = False # True: use intent tag as input, False: use nl as input
 
     # Train
@@ -183,11 +183,13 @@ if __name__ == '__main__':
                     model.labels:test_target,
                     model.nl_indices:nl_indices
                     })
-
+        f = open('Data/test/talker', 'r')
         # calculate test F1 score
         pred_vec = np.array(list())
         label_vec = np.array(list())
-        for pred, label in zip(test_output, test_target):
+        for pred, label, talker in zip(test_output, test_target, f):
+            if talker.strip('\n') == 'Guide':
+                continue
             pred_act = pred[:5] # first 5 is act
             pred_attribute = pred[5:] # remaining is attribute
             binary = Binarizer(threshold=0.5)
