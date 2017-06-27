@@ -74,24 +74,13 @@ class slu_model(object):
         tourist_output = self.hist_biRNN('tourist')
         guide_output = self.hist_biRNN('guide')
         concat_output = tf.concat([tourist_output, guide_output], axis=1)
-        history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, activation=tf.nn.relu)
+        history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
-        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, activation=tf.nn.sigmoid)
+        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
         
     def add_train_op(self):
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.005)
-        gvs = optimizer.compute_gradients(self.loss)
-        # clip the gradients
-	def ClipIfNotNone(grad):
-            '''
-            if grad is None:
-                return grad
-            return tf.clip_by_value(grad, -1, 1)
-            '''
-            return grad
-        capped_gvs = [(ClipIfNotNone(grad), var) for grad, var in gvs]
-        optimizer.apply_gradients(capped_gvs)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train_op = optimizer.minimize(self.loss)
