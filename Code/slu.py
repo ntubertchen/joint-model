@@ -195,7 +195,7 @@ if __name__ == '__main__':
         pred_vec = np.array(list())
         label_vec = np.array(list())
         for pred, label, talker in zip(test_output, test_target, test_talker):
-            if talker.strip('\n') == 'Tourist':
+            if talker.strip('\n') == 'Guide':
                 continue
             pred_act = pred[:5] # first 5 is act
             pred_attribute = pred[5:] # remaining is attribute
