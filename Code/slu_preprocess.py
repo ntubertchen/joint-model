@@ -17,7 +17,7 @@ class slu_data():
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
         self.test_intent = self.convertintent2id(test_intent)
-        glove = open('GloVe/glove.6B.200d.txt', 'r')
+        glove = open('../GloVe/glove.6B.200d.txt', 'r')
         self.word2id = defaultdict()
         self.id2word = defaultdict()
         self.embedding_matrix = None

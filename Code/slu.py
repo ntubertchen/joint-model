@@ -189,7 +189,7 @@ if __name__ == '__main__':
     # calculate test F1 score
     pred_vec = np.array(list())
     label_vec = np.array(list())
-    for pred, label in zip(test_output, train_target):
+    for pred, label in zip(test_output, test_target):
         label_bin = Binarizer(threshold=0.5)
         pred_bin = Binarizer(threshold=0.2)
         logit = pred_bin.fit_transform([pred])

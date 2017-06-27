@@ -76,7 +76,7 @@ class slu_model(object):
         concat_output = tf.concat([tourist_output, guide_output], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, activation=tf.nn.relu)
         final_output = self.nl_biRNN(history_summary)
-        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, activation=tf.nn.relu)
+        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, activation=tf.nn.sigmoid)
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
