@@ -34,9 +34,6 @@ class slu_data():
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
-        #nl, intent = self.get_train_batch()
-        #self.get_valid_batch()
-        #self.get_test_batch()
 
     def get_train_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""

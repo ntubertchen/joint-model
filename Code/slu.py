@@ -111,17 +111,18 @@ def one_hot(idx, T):
 
 if __name__ == '__main__':
     sess = tf.Session(config=config)
-    data = slu_data()
     max_seq_len = 60
+    epoch = 30
+    batch_size = 128
+    use_intent = True # True: use intent tag as input, False: use nl as input
+    
+    data = slu_data()
     total_intent = data.total_intent
     total_word = data.total_word
     model = slu_model(max_seq_len, total_intent)
     sess.run(model.init_model)
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
-
-    epoch = 30
-    use_intent = True # True: use intent tag as input, False: use nl as input
 
     # Train
     for cur_epoch in range(epoch):
@@ -130,7 +131,7 @@ if __name__ == '__main__':
         total_loss = 0.0
         for _ in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(128)
+            batch_nl, batch_intent = data.get_train_batch(batch_size)
             train_intent = None
             train_nl = None
             if use_intent == True:
@@ -165,9 +166,9 @@ if __name__ == '__main__':
                 pred_outputs = np.append(pred_outputs, np.append(act_logit, attribute_logit))
                 train_targets = np.append(train_targets, label)
         # calculate batch F1 score
-        print "cur_epoch is:", cur_epoch
-        print "f1 score is:", f1_score(pred_outputs, train_targets, average='binary')
-        print "loss is:", total_loss
+        print "Epoch:", cur_epoch
+        print "f1 score:", f1_score(pred_outputs, train_targets, average='binary')
+        print "training loss:", total_loss
 
         # Test
         test_nl, test_intent = data.get_test_batch()
@@ -207,6 +208,6 @@ if __name__ == '__main__':
             label = binary.fit_transform([label])
             pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
-        print "test f1 score is:", f1_score(pred_vec, label_vec, average='binary')
+        print "testing f1 score:", f1_score(pred_vec, label_vec, average='binary')
         test_talker.close()
     sess.close()
