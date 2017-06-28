@@ -115,11 +115,12 @@ if __name__ == '__main__':
     epoch = 30
     batch_size = 128
     use_intent = False # True: use intent tag as input, False: use nl as input
-    
+    use_attention = True
+
     data = slu_data()
     total_intent = data.total_intent
     total_word = data.total_word
-    model = slu_model(max_seq_len, total_intent)
+    model = slu_model(max_seq_len, total_intent, use_attention)
     sess.run(model.init_model)
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})

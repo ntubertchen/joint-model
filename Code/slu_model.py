@@ -3,12 +3,13 @@ import numpy as np
 from tensorflow.contrib import rnn
 
 class slu_model(object):
-    def __init__(self, max_seq_len, intent_dim):
+    def __init__(self, max_seq_len, intent_dim, use_attention):
         self.hidden_size = 128
         self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
         self.total_word = 400001 # total word embedding vectors
         self.max_seq_len = max_seq_len
+        self.use_attention = use_attention
         self.add_variables()
         self.add_placeholders()
         self.add_variables()
@@ -74,6 +75,13 @@ class slu_model(object):
         tourist_output = self.hist_biRNN('tourist')
         guide_output = self.hist_biRNN('guide')
         concat_output = tf.concat([tourist_output, guide_output], axis=1)
+        if self.use_attention == True:
+            attention = tf.nn.softmax(tf.layers.dense(inputs=concat_output, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
+            batch_size = tf.shape(attention)[0]
+            col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
+            col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
+            role_attention = tf.concat([tf.multiply(tourist_output, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_output, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
+            concat_output = role_attention
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
