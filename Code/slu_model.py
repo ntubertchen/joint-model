@@ -40,17 +40,17 @@ class slu_model(object):
         # correct label that used to calculate sigmoid cross entropy loss, should be [batch_size, intent_dim]
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
 
-    def hist_biRNN(self, scope):
-        with tf.variable_scope(scope):
-            if scope == 'tourist':
+    def hist_biRNN(self, role, reuse=None):
+        with tf.variable_scope("hist", reuse=reuse):
+            if role == 'tourist':
                 inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
                 seq_len = self.tourist_len
-            elif scope == 'guide':
+            elif role == 'guide':
                 inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
                 seq_len = self.guide_len
 
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
@@ -72,8 +72,8 @@ class slu_model(object):
             return outputs
 
     def build_graph(self):
-        tourist_output = self.hist_biRNN('tourist')
-        guide_output = self.hist_biRNN('guide')
+        tourist_output = self.hist_biRNN('tourist', reuse=False)
+        guide_output = self.hist_biRNN('guide', reuse=True)
         concat_output = tf.concat([tourist_output, guide_output], axis=1)
         if self.use_attention == True:
             attention = tf.nn.softmax(tf.layers.dense(inputs=concat_output, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
