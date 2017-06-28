@@ -111,10 +111,10 @@ def one_hot(idx, T):
 
 if __name__ == '__main__':
     sess = tf.Session(config=config)
-    max_seq_len = 60
+    max_seq_len = 70
     epoch = 30
     batch_size = 128
-    use_intent = True # True: use intent tag as input, False: use nl as input
+    use_intent = False # True: use intent tag as input, False: use nl as input
     
     data = slu_data()
     total_intent = data.total_intent
@@ -123,7 +123,7 @@ if __name__ == '__main__':
     sess.run(model.init_model)
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
-
+    test_f1_scores = list()
     # Train
     for cur_epoch in range(epoch):
         pred_outputs = list()
@@ -208,6 +208,9 @@ if __name__ == '__main__':
             label = binary.fit_transform([label])
             pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
-        print "testing f1 score:", f1_score(pred_vec, label_vec, average='binary')
+        f1sc = f1_score(pred_vec, label_vec, average='binary')
+        print "testing f1 score:", f1sc
+        test_f1_scores.append(f1sc)
         test_talker.close()
+    print "max test f1 score:", max(test_f1_scores)
     sess.close()
