@@ -10,10 +10,14 @@ class slu_data():
         train_intent = open('Data/train/intent', 'r')
         valid_intent = open('Data/valid/intent', 'r')
         test_intent = open('Data/test/intent', 'r')
+        train_talker = open('Data/train/talker', 'r')
         self.intent_act_dict = None
         self.intent_attri_dict = None
         self.total_intent = None
         self.total_word = None
+        self.train_tourist_indices = list()
+        self.train_guide_indices = list()
+        self.get_talker(train_talker)
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
         self.test_intent = self.convertintent2id(test_intent)
@@ -34,11 +38,26 @@ class slu_data():
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
+    
+    def get_talker(self, data_file):
+        for idx, line in enumerate(data_file):
+            talker = line.strip('\n')
+            if talker == 'Tourist':
+                self.train_tourist_indices.append(idx)
+            elif talker == 'Guide':
+                self.train_guide_indices.append(idx)
+            else:
+                print "cannot be here!"
+                exit(1)
 
-    def get_train_batch(self, batch_size):
+    def get_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
-        random.shuffle(self.train_batch_indices)
-        batch_indices = self.train_batch_indices[:batch_size]
+        if role == None:
+            random.shuffle(self.train_batch_indices)
+            batch_indices = self.train_batch_indices[:batch_size]
+        elif role == 'Tourist':
+            random.shuffle(self.train_tourist_indices)
+            batch_indices = self.train_tourist_indices[:batch_size]
         ret_nl_batch = list()
         ret_intent_batch = list()
         for batch_idx in batch_indices:
