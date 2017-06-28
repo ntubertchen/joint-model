@@ -113,6 +113,8 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     data = slu_data()
     max_seq_len = 50
+    epoch = 30
+    use_intent = False # True: use intent tag as input, False: use nl as input, however, this not important in slu_no_hist
     total_intent = data.total_intent
     total_word = data.total_word
     model = slu_model(max_seq_len, total_intent)
@@ -120,9 +122,7 @@ if __name__ == '__main__':
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
 
-    epoch = 30
-    use_intent = False # True: use intent tag as input, False: use nl as input
-
+    test_f1_scores = list()
     # Train
     for cur_epoch in range(epoch):
         pred_outputs = list()
@@ -200,5 +200,8 @@ if __name__ == '__main__':
             label = binary.fit_transform([label])
             pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
-        print "test f1 score is:", f1_score(pred_vec, label_vec, average='binary')
+        f1sc = f1_score(pred_vec, label_vec, average='binary')
+        print "test f1 score is:", f1sc
+        test_f1_scores.append(f1sc)
+    print "max test f1 score is:", max(test_f1_scores)
     sess.close()
