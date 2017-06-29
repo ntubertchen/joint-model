@@ -109,6 +109,30 @@ def one_hot(idx, T):
         ret[idx] = 1.0
     return ret
 
+def calc_test_f1_score(test_output, test_target, test_role='All'):
+    test_talker = open('Data/test/talker', 'r')
+    pred_vec = np.array(list())
+    label_vec = np.array(list())
+    for pred, label, talker in zip(test_output, test_target, test_talker):
+        if test_role == 'Tourist' and talker.strip('\n') == 'Guide':
+            continue
+        elif test_role == 'Guide' and talker.strip('\n') == 'Tourist':
+            continue
+
+        pred_act = pred[:5]  # first 5 is act
+        pred_attribute = pred[5:]  # remaining is attribute
+        binary = Binarizer(threshold=0.5)
+        act_logit = one_hot(np.argmax(pred_act), 'act')
+        attribute_logit = binary.fit_transform([pred_attribute])
+        if np.sum(attribute_logit) == 0:
+            attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
+        label = binary.fit_transform([label])
+        pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
+        label_vec = np.append(label_vec, label)
+    f1sc = f1_score(pred_vec, label_vec, average='binary')
+    return f1sc
+    test_talker.close()
+
 if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 70
@@ -124,8 +148,15 @@ if __name__ == '__main__':
     sess.run(model.init_model)
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
-    test_f1_scores = list()
-    # Train
+
+    # test scores
+    test_f1_scores_all = list()
+    test_f1_scores_guide = list()
+    test_f1_scores_tourist = list()
+
+    ####################################
+    #             Training             #
+    ####################################
     for cur_epoch in range(epoch):
         pred_outputs = list()
         train_targets = list()
@@ -146,18 +177,18 @@ if __name__ == '__main__':
 
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
-                        model.tourist_input:train_tourist,
-                        model.guide_input:train_guide,
-                        model.input_nl:train_nl,
-                        model.tourist_len:tourist_len,
-                        model.guide_len:guide_len,
-                        model.labels:train_target,
-                        model.nl_len:nl_len,
+                        model.tourist_input: train_tourist,
+                        model.guide_input: train_guide,
+                        model.input_nl: train_nl,
+                        model.tourist_len: tourist_len,
+                        model.guide_len: guide_len,
+                        model.labels: train_target,
+                        model.nl_len: nl_len,
                         })
             total_loss += loss
             for pred, label in zip(intent_output, train_target):
-                pred_act = pred[:5] # first 5 is act
-                pred_attribute = pred[5:] # remaining is attribute
+                pred_act = pred[:5]  # first 5 is act
+                pred_attribute = pred[5:]  # remaining is attribute
                 binary = Binarizer(threshold=0.5)
                 act_logit = one_hot(np.argmax(pred_act), 'act')
                 attribute_logit = binary.fit_transform([pred_attribute])
@@ -166,12 +197,17 @@ if __name__ == '__main__':
                 label = binary.fit_transform([label])
                 pred_outputs = np.append(pred_outputs, np.append(act_logit, attribute_logit))
                 train_targets = np.append(train_targets, label)
+
         # calculate batch F1 score
-        print "Epoch:", cur_epoch
+        print "========================="
+        print "        Epoch:", cur_epoch
+        print "========================="
         print "f1 score:", f1_score(pred_outputs, train_targets, average='binary')
         print "training loss:", total_loss
 
-        # Test
+        ####################################
+        #             Testing              #
+        ####################################
         test_nl, test_intent = data.get_test_batch()
         if use_intent == True:
             test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_intent(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
@@ -183,35 +219,32 @@ if __name__ == '__main__':
             nl_indices.append([idx, indices])
         test_output = sess.run(model.intent_output,
                 feed_dict={
-                    model.tourist_input:test_tourist,
-                    model.guide_input:test_guide,
-                    model.input_nl:test_nl,
-                    model.tourist_len:tourist_len,
-                    model.guide_len:guide_len,
-                    model.nl_len:nl_len,
-                    model.labels:test_target
+                    model.tourist_input: test_tourist,
+                    model.guide_input: test_guide,
+                    model.input_nl: test_nl,
+                    model.tourist_len: tourist_len,
+                    model.guide_len: guide_len,
+                    model.nl_len: nl_len,
+                    model.labels: test_target
                     })
 
-        # calculate test F1 score
-        test_talker = open('Data/test/talker', 'r')
-        pred_vec = np.array(list())
-        label_vec = np.array(list())
-        for pred, label, talker in zip(test_output, test_target, test_talker):
-            if talker.strip('\n') == 'Guide':
-                continue
-            pred_act = pred[:5] # first 5 is act
-            pred_attribute = pred[5:] # remaining is attribute
-            binary = Binarizer(threshold=0.5)
-            act_logit = one_hot(np.argmax(pred_act), 'act')
-            attribute_logit = binary.fit_transform([pred_attribute])
-            if np.sum(attribute_logit) == 0:
-                attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
-            label = binary.fit_transform([label])
-            pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
-            label_vec = np.append(label_vec, label)
-        f1sc = f1_score(pred_vec, label_vec, average='binary')
-        print "testing f1 score:", f1sc
-        test_f1_scores.append(f1sc)
-        test_talker.close()
-    print "max test f1 score:", max(test_f1_scores)
+        # calculate the f1 score, indicate the test role by arguments ('Guide', 'Tourist', 'All')
+        f1sc = calc_test_f1_score(test_output, test_target, 'All')
+        print "testing f1 score (All):", f1sc
+        test_f1_scores_all.append(f1sc)
+
+        f1sc = calc_test_f1_score(test_output, test_target, 'Guide')
+        print "testing f1 score (Guide):", f1sc
+        test_f1_scores_guide.append(f1sc)
+
+        f1sc = calc_test_f1_score(test_output, test_target, 'Tourist')
+        print "testing f1 score (Tourist):", f1sc
+        test_f1_scores_tourist.append(f1sc)
+
+        # print the max test f1 score of each role
+        print ""
+        print "max test f1 score (All):", max(test_f1_scores_all)
+        print "max test f1 score (Guide):", max(test_f1_scores_guide)
+        print "max test f1 score (Tourist):", max(test_f1_scores_tourist)
+
     sess.close()

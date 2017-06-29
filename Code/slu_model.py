@@ -88,7 +88,7 @@ class slu_model(object):
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
-        
+
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train_op = optimizer.minimize(self.loss)
