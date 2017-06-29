@@ -138,7 +138,7 @@ if __name__ == '__main__':
     max_seq_len = 70
     epoch = 30
     batch_size = 128
-    use_intent = False # True: use intent tag as input, False: use nl as input
+    use_intent = False  # True: use intent tag as input, False: use nl as input
     use_attention = True
 
     data = slu_data()
