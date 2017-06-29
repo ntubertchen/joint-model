@@ -12,6 +12,7 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
 def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
+    nl_pad_id += 1
     train_tourist = list()
     train_guide = list()
     train_nl = list()
@@ -113,8 +114,8 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 70
     epoch = 30
-    batch_size = 128
-    use_intent = False # True: use intent tag as input, False: use nl as input
+    batch_size = 64
+    use_intent = True # True: use intent tag as input, False: use nl as input
     use_attention = True
 
     data = slu_data()
@@ -153,6 +154,7 @@ if __name__ == '__main__':
                         model.guide_len:guide_len,
                         model.labels:train_target,
                         model.nl_len:nl_len,
+                        model.dropout_keep_prob:0.5
                         })
             total_loss += loss
             for pred, label in zip(intent_output, train_target):
@@ -177,20 +179,30 @@ if __name__ == '__main__':
             test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_intent(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         else:
             test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_nl(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-        # add nl_indices to gather_nd of bi-rnn output
-        nl_indices = list()
-        for idx, indices in enumerate(nl_len):
-            nl_indices.append([idx, indices])
         test_output = sess.run(model.intent_output,
                 feed_dict={
-                    model.tourist_input:test_tourist,
-                    model.guide_input:test_guide,
-                    model.input_nl:test_nl,
-                    model.tourist_len:tourist_len,
-                    model.guide_len:guide_len,
-                    model.nl_len:nl_len,
-                    model.labels:test_target
+                    model.tourist_input:test_tourist[:5000],
+                    model.guide_input:test_guide[:5000],
+                    model.input_nl:test_nl[:5000],
+                    model.tourist_len:tourist_len[:5000],
+                    model.guide_len:guide_len[:5000],
+                    model.nl_len:nl_len[:5000],
+                    model.labels:test_target[:5000],
+                    model.dropout_keep_prob:1.0
                     })
+        
+        test_output = np.concatenate((test_output, sess.run(model.intent_output,
+                feed_dict={
+                    model.tourist_input:test_tourist[5000:],
+                    model.guide_input:test_guide[5000:],
+                    model.input_nl:test_nl[5000:],
+                    model.tourist_len:tourist_len[5000:],
+                    model.guide_len:guide_len[5000:],
+                    model.nl_len:nl_len[5000:],
+                    model.labels:test_target[5000:],
+                    model.dropout_keep_prob:1.0
+                    })), axis=0)
+
 
         # calculate test F1 score
         test_talker = open('Data/test/talker', 'r')

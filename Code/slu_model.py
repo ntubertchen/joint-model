@@ -7,8 +7,10 @@ class slu_model(object):
         self.hidden_size = 128
         self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
-        self.total_word = 400001 # total word embedding vectors
+        self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
+        self.filter_sizes = [2,3,4]
+        self.filter_depth = 128
         self.use_attention = use_attention
         self.add_variables()
         self.add_placeholders()
@@ -39,6 +41,7 @@ class slu_model(object):
         self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
         # correct label that used to calculate sigmoid cross entropy loss, should be [batch_size, intent_dim]
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
+        self.dropout_keep_prob = tf.placeholder(tf.float32)
 
     def hist_biRNN(self, scope):
         with tf.variable_scope(scope):
@@ -71,24 +74,42 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
+    def role_attention(self, tourist_summary, guide_summary):
+        inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim] 
+        pooled_outputs = list()
+        for idx, filter_size in enumerate(self.filter_sizes):
+            # convolution layer
+            kernel_size = (filter_size)
+            h = tf.layers.conv1d(inputs, self.filter_depth, kernel_size, activation=tf.nn.relu, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+            # max over time pooling
+            pooled = tf.layers.max_pooling1d(h, (self.max_seq_len-filter_size+1), 1)
+            pooled_outputs.append(pooled)
+        num_filters_total = self.filter_depth * len(self.filter_sizes)
+        h_pool_flat = tf.squeeze(tf.concat(pooled_outputs, axis=2), axis=1)
+        h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
+        attention = tf.nn.softmax(tf.layers.dense(inputs=h_drop, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
+        batch_size = tf.shape(attention)[0]
+        col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
+        col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
+        #role_attention = tf.concat([tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
+        role_attention = tf.add(tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1)))
+        return role_attention
+
     def build_graph(self):
         tourist_output = self.hist_biRNN('tourist')
         guide_output = self.hist_biRNN('guide')
-        concat_output = tf.concat([tourist_output, guide_output], axis=1)
         if self.use_attention == True:
-            attention = tf.nn.softmax(tf.layers.dense(inputs=concat_output, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
-            batch_size = tf.shape(attention)[0]
-            col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
-            col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
-            role_attention = tf.concat([tf.multiply(tourist_output, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_output, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
-            concat_output = role_attention
+            concat_output = self.role_attention(tourist_output, guide_output)
+        else:
+            concat_output = tf.concat([tourist_output, guide_output], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
+        #self.loss = tf.reduce_mean(tf.nn.weighted_cross_entropy_with_logits(self.labels, self.intent_output, 4))
         
     def add_train_op(self):
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+        optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         self.train_op = optimizer.minimize(self.loss)
