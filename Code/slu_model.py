@@ -43,6 +43,27 @@ class slu_model(object):
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
         self.dropout_keep_prob = tf.placeholder(tf.float32)
 
+    def hist_cnn(self, scope):
+        with tf.variable_scope(scope):
+            if scope == 'tourist':
+                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
+                seq_len = self.tourist_len
+            elif scope == 'guide':
+                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
+                seq_len = self.guide_len
+            pooled_outputs = list()
+            for idx, filter_size in enumerate(self.filter_sizes):
+                # convolution layer
+                kernel_size = (filter_size)
+                h = tf.layers.conv1d(inputs, self.filter_depth, kernel_size, activation=tf.nn.relu, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+                # max over time pooling
+                pooled = tf.layers.max_pooling1d(h, (self.max_seq_len-filter_size+1), 1)
+                pooled_outputs.append(pooled)
+            num_filters_total = self.filter_depth * len(self.filter_sizes)
+            h_pool_flat = tf.squeeze(tf.concat(pooled_outputs, axis=2), axis=1)
+            h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
+            return h_drop
+
     def hist_biRNN(self, scope):
         with tf.variable_scope(scope):
             if scope == 'tourist':
@@ -74,34 +95,34 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
-    def role_attention(self, tourist_summary, guide_summary):
-        inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim] 
-        pooled_outputs = list()
-        for idx, filter_size in enumerate(self.filter_sizes):
-            # convolution layer
-            kernel_size = (filter_size)
-            h = tf.layers.conv1d(inputs, self.filter_depth, kernel_size, activation=tf.nn.relu, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
-            # max over time pooling
-            pooled = tf.layers.max_pooling1d(h, (self.max_seq_len-filter_size+1), 1)
-            pooled_outputs.append(pooled)
-        num_filters_total = self.filter_depth * len(self.filter_sizes)
-        h_pool_flat = tf.squeeze(tf.concat(pooled_outputs, axis=2), axis=1)
-        h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
-        attention = tf.nn.softmax(tf.layers.dense(inputs=h_drop, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
-        batch_size = tf.shape(attention)[0]
-        col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
-        col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
-        #role_attention = tf.concat([tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
-        role_attention = tf.add(tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1)))
-        return role_attention
+    def role_attention(self, tourist_rnn_hist, guide_rnn_hist):
+        tourist_cnn_hist = self.hist_cnn('tourist')
+        guide_cnn_hist = self.hist_cnn('guide')
+        with tf.variable_scope("role_attention"):
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.nl_len, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            # concat current output with cnn_hist
+            outputs = tf.concat([tourist_cnn_hist, guide_cnn_hist, cur_rnn_outputs], axis=1)
+            attention = tf.nn.softmax(tf.layers.dense(inputs=outputs, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
+            batch_size = tf.shape(attention)[0]
+            col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
+            col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
+            #role_attention = tf.concat([tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
+            role_attention = tf.add(tf.multiply(tourist_rnn_hist, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_rnn_hist, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1)))
+            return role_attention
 
     def build_graph(self):
-        tourist_output = self.hist_biRNN('tourist')
-        guide_output = self.hist_biRNN('guide')
+        tourist_rnn_hist = self.hist_biRNN('tourist')
+        guide_rnn_hist = self.hist_biRNN('guide')
         if self.use_attention == True:
-            concat_output = self.role_attention(tourist_output, guide_output)
+            concat_output = self.role_attention(tourist_rnn_hist, guide_rnn_hist)
         else:
-            concat_output = tf.concat([tourist_output, guide_output], axis=1)
+            concat_output = tf.concat([tourist_rnn_hist, guide_rnn_hist], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
