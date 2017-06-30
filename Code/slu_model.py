@@ -26,21 +26,24 @@ class slu_model(object):
 
     def add_variables(self):
         self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, name="glove_embedding")
-        self.intent_matrix = tf.Variable(tf.truncated_normal([self.intent_dim, self.embedding_dim]), dtype=tf.float32, name="intent_embedding")
 
     def add_placeholders(self):
-        # intent sequence, if we take previous n utterences as history, than its length is n*intent_dim
-        self.tourist_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
-        self.guide_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
-        self.tourist_len = tf.placeholder(tf.int32, [None])
-        self.guide_len = tf.placeholder(tf.int32, [None])
-        self.nl_len = tf.placeholder(tf.int32, [None])
-        # natural language input sequence, which is also the utterance we are going to predict(intents)
-        self.input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
-        # pretrained word embedding matrix
+        self.tourist_input_intent = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.guide_input_intent = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.tourist_len_intent = tf.placeholder(tf.int32, [None])
+        self.guide_len_intent = tf.placeholder(tf.int32, [None])
+        self.nl_len_intent = tf.placeholder(tf.int32, [None])
+        self.input_nl_intent = tf.placeholder(tf.int32, [None, self.max_seq_len])
         self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
-        # correct label that used to calculate sigmoid cross entropy loss, should be [batch_size, intent_dim]
-        self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
+        self.labels_intent = tf.placeholder(tf.float32, [None, self.intent_dim])
+        self.tourist_input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.guide_input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.tourist_len_nl = tf.placeholder(tf.int32, [None])
+        self.guide_len_nl = tf.placeholder(tf.int32, [None])
+        self.nl_len_nl = tf.placeholder(tf.int32, [None])
+        self.input_nl_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
+        self.labels_intent = tf.placeholder(tf.float32, [None, self.intent_dim])
         self.dropout_keep_prob = tf.placeholder(tf.float32)
 
     def hist_cnn(self, scope):

@@ -11,6 +11,20 @@ from sklearn.preprocessing import Binarizer
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
+def one_hot(idx, T):
+    # intent dim is 26, 5 is act, 21 is attribute
+    if T == 'act':
+        ret = np.zeros(5)
+        ret[idx] = 1.0
+    elif T == 'attribute':
+        ret = np.zeros(21)
+        ret[idx] = 1.0
+    elif T == 'mix':
+        ret = np.zeros(26)
+        for i in idx:
+            ret[i] = 1.0
+    return ret
+
 def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
     nl_pad_id += 1
     train_tourist = list()
@@ -73,12 +87,11 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
         # tourist part
         for tup in history[:hist_len]:
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_tourist_list += d
+            temp_tourist_list = np.concatenate(temp_tourist_list, one_hot(d, 'mix'))
         # guide part
         for tup in history[hist_len:]:
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_guide_list += d
-
+            temp_guide_list = np.contenate(temp_guide_list, one_hot(d, 'mix'))
         # pad the sequence
         train_tourist.append(temp_tourist_list+[intent_pad_id for _ in range(max_seq_len - len(temp_tourist_list))])
         tourist_len.append(len(temp_tourist_list))
@@ -100,22 +113,11 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
 
     return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
-def one_hot(idx, T):
-    # intent dim is 26, 5 is act, 21 is attribute
-    if T == 'act':
-        ret = np.zeros(5)
-        ret[idx] = 1.0
-    elif T == 'attribute':
-        ret = np.zeros(21)
-        ret[idx] = 1.0
-    return ret
-
 if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 70
     epoch = 30
     batch_size = 64
-    use_intent = True # True: use intent tag as input, False: use nl as input
     use_attention = True
 
     data = slu_data()
@@ -136,24 +138,32 @@ if __name__ == '__main__':
             batch_nl, batch_intent = data.get_train_batch(batch_size)
             train_intent = None
             train_nl = None
-            if use_intent == True:
-                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-            else:
-                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            train_tourist_intent, train_guide_intent, train_nl_intent, train_target_intent, tourist_len_intent, guide_len_intent, nl_len_intent = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            train_tourist_nl, train_guide_nl, train_nl_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len_nl = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             # add nl_indices to gather_nd of bi-rnn output
-            nl_indices = list()
-            for idx, indices in enumerate(nl_len):
-                nl_indices.append([idx, indices])
+            nl_indices_intent = list()
+            nl_indices_nl = list()
+            for idx, indices in enumerate(nl_len_intent):
+                nl_indices_intent.append([idx, indices])
+            for idx, indices in enumerate(nl_len_nl):
+                nl_indices_nl.append([idx, indices])
 
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
-                        model.tourist_input:train_tourist,
-                        model.guide_input:train_guide,
-                        model.input_nl:train_nl,
-                        model.tourist_len:tourist_len,
-                        model.guide_len:guide_len,
-                        model.labels:train_target,
-                        model.nl_len:nl_len,
+                        model.tourist_input_intent:train_tourist_intent,
+                        model.guide_input_intent:train_guide_intent,
+                        model.input_nl_intent:train_nl_intent,
+                        model.tourist_len_intent:tourist_len_intent,
+                        model.guide_len_intent:guide_len_intent,
+                        model.labels_intent:train_target_intent,
+                        model.nl_len_intent:nl_len_intent,
+                        model.tourist_input_nl:train_tourist_nl,
+                        model.guide_input_nl:train_guide_nl,
+                        model.input_nl_nl:train_nl_nl,
+                        model.tourist_len_nl:tourist_len_nl,
+                        model.guide_len_nl:guide_len_nl,
+                        model.labels_nl:train_target_nl,
+                        model.nl_len_nl:nl_len_nl,
                         model.dropout_keep_prob:0.5
                         })
             total_loss += loss
@@ -175,10 +185,8 @@ if __name__ == '__main__':
 
         # Test
         test_nl, test_intent = data.get_test_batch()
-        if use_intent == True:
-            test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_intent(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-        else:
-            test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_nl(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_intent(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_nl(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         test_output = sess.run(model.intent_output,
                 feed_dict={
                     model.tourist_input:test_tourist[:5000],
