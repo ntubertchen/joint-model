@@ -9,7 +9,7 @@ class slu_model(object):
         self.embedding_dim = 200 # read from glove
         self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
-        self.filter_sizes = [2,3,4]
+        self.filter_sizes = [5,6,7]
         self.filter_depth = 128
         self.use_attention = use_attention
         self.add_variables()
@@ -44,12 +44,13 @@ class slu_model(object):
         self.dropout_keep_prob = tf.placeholder(tf.float32)
 
     def hist_cnn(self, scope):
+        assert self.use_attention == True
         with tf.variable_scope(scope):
             if scope == 'tourist':
-                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.tourist_input)
                 seq_len = self.tourist_len
             elif scope == 'guide':
-                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.guide_input)
                 seq_len = self.guide_len
             pooled_outputs = list()
             for idx, filter_size in enumerate(self.filter_sizes):
@@ -95,9 +96,9 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
-    def role_attention(self, tourist_rnn_hist, guide_rnn_hist):
-        tourist_cnn_hist = self.hist_cnn('tourist')
-        guide_cnn_hist = self.hist_cnn('guide')
+    def role_attention(self, tourist_cnn_hist, guide_cnn_hist):
+        #tourist_cnn_hist = self.hist_cnn('tourist')
+        #guide_cnn_hist = self.hist_cnn('guide')
         with tf.variable_scope("role_attention"):
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
@@ -113,16 +114,16 @@ class slu_model(object):
             col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
             col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
             #role_attention = tf.concat([tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
-            role_attention = tf.add(tf.multiply(tourist_rnn_hist, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_rnn_hist, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1)))
+            role_attention = tf.add(tf.multiply(tourist_cnn_hist, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_cnn_hist, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1)))
             return role_attention
 
     def build_graph(self):
-        tourist_rnn_hist = self.hist_biRNN('tourist')
-        guide_rnn_hist = self.hist_biRNN('guide')
+        tourist_cnn_hist = self.hist_cnn('tourist')
+        guide_cnn_hist = self.hist_cnn('guide')
         if self.use_attention == True:
-            concat_output = self.role_attention(tourist_rnn_hist, guide_rnn_hist)
+            concat_output = self.role_attention(tourist_cnn_hist, guide_cnn_hist)
         else:
-            concat_output = tf.concat([tourist_rnn_hist, guide_rnn_hist], axis=1)
+            concat_output = tf.concat([tourist_cnn_hist, guide_cnn_hist], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
