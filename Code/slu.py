@@ -119,12 +119,13 @@ if __name__ == '__main__':
     max_seq_len = 40
     epoch = 30
     batch_size = 256
-    use_attention = True
+    use_attention = False
+    use_mid_loss = True
 
     data = slu_data()
     total_intent = data.total_intent
     total_word = data.total_word
-    model = slu_model(max_seq_len, total_intent, use_attention)
+    model = slu_model(max_seq_len, total_intent, use_attention, use_mid_loss)
     sess.run(model.init_model)
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})

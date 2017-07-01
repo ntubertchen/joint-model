@@ -3,16 +3,17 @@ import numpy as np
 from tensorflow.contrib import rnn
 
 class slu_model(object):
-    def __init__(self, max_seq_len, intent_dim, use_attention):
+    def __init__(self, max_seq_len, intent_dim, use_attention, use_mid_loss):
         self.hidden_size = 128
         self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
         self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
         self.filter_sizes = [3,4,5]
-        self.filter_depth = 64
+        self.filter_depth = 128
         self.hist_len = 3
         self.use_attention = use_attention
+        self.use_mid_loss = use_mid_loss
         self.add_variables()
         self.add_placeholders()
         self.add_variables()
@@ -97,17 +98,18 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
-    def role_attention(self):
+    def sentence_attention(self):
         self.unstack_tourist_cnn_hist = list()
         self.unstack_guide_cnn_hist = list()
         for i in range(self.hist_len):
             self.unstack_tourist_cnn_hist.append(self.hist_cnn('tourist', i))
             self.unstack_guide_cnn_hist.append(self.hist_cnn('guide', i))
-        # TODO: naively concat all the history
         tourist_cnn_hist = tf.sigmoid(tf.concat(self.unstack_tourist_cnn_hist, axis=1))
         guide_cnn_hist = tf.sigmoid(tf.concat(self.unstack_guide_cnn_hist, axis=1))
+        if not self.use_attention:
+            return tf.concat([tourist_cnn_hist, guide_cnn_hist], axis=1)
 
-        with tf.variable_scope("role_attention"):
+        with tf.variable_scope("sentence_attention"):
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
@@ -116,17 +118,22 @@ class slu_model(object):
             final_bw = tf.concat(final_states[1], axis=1)
             cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             # concat current output with cnn_hist
-            outputs = tf.concat([tourist_cnn_hist, guide_cnn_hist, cur_rnn_outputs], axis=1)
-            attention = tf.nn.softmax(tf.layers.dense(inputs=outputs, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
-            #batch_size = tf.shape(attention)[0]
-            #col_0 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
-            #col_1 = tf.concat([tf.expand_dims(tf.range(0, batch_size), axis=1), tf.ones([batch_size, 1], dtype=tf.int32)], axis=1)
-            #role_attention = tf.concat([tf.multiply(tourist_summary, tf.expand_dims(tf.gather_nd(attention, col_0), axis=1)), tf.multiply(guide_summary, tf.expand_dims(tf.gather_nd(attention, col_1), axis=1))], axis=1)
-            role_attention = tf.add(tf.multiply(tourist_cnn_hist, tf.expand_dims(tf.unstack(attention, axis=1)[0], axis=1)), tf.multiply(guide_cnn_hist, tf.expand_dims(tf.unstack(attention, axis=1)[1], axis=1)))
-            return role_attention
+            output_tourist = tf.concat([tourist_cnn_hist, cur_rnn_outputs], axis=1)
+            weight_tourist = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_tourist, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
+            output_guide = tf.concat([guide_cnn_hist, cur_rnn_outputs], axis=1)
+            weight_guide = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_guide, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
+            tourist_attention = list()
+            guide_attention = list()
+            for i in range(3):
+                tourist_attention.append(tf.multiply(self.unstack_tourist_cnn_hist[i], tf.expand_dims(weight_tourist[i], axis=1)))
+                guide_attention.append(tf.multiply(self.unstack_guide_cnn_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
+            tourist_attention = tf.add_n(tourist_attention)
+            guide_attention = tf.add_n(guide_attention)
+            sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
+            return sentence_attention
 
     def build_graph(self):
-        concat_output = self.role_attention()
+        concat_output = self.sentence_attention()
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
@@ -137,7 +144,10 @@ class slu_model(object):
         stack_guide_cnn_hist = tf.stack(self.unstack_guide_cnn_hist, axis=1)
         loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_cnn_hist))
         loss_intent_guide = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.guide_input_intent, logits=stack_guide_cnn_hist))
-        self.loss = loss_ce + loss_intent_tourist + loss_intent_guide
+        if self.use_mid_loss == True:
+            self.loss = loss_ce + loss_intent_tourist + loss_intent_guide
+        else:
+            self.loss = loss_ce
         
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
