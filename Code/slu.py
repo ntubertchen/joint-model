@@ -118,7 +118,7 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 40
     epoch = 30
-    batch_size = 256
+    batch_size = 16
     use_attention = False
     use_mid_loss = True
 
@@ -142,10 +142,6 @@ if __name__ == '__main__':
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
             # add nl_indices to gather_nd of bi-rnn output
-            nl_indices_intent = list()
-            nl_indices_nl = list()
-            for idx, indices in enumerate(nl_len):
-                nl_indices_intent.append([idx, indices])
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
                         model.tourist_input_intent:train_tourist_intent,

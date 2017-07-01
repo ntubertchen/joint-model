@@ -67,21 +67,28 @@ class slu_model(object):
             dense_h = tf.layers.dense(inputs=h_drop, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
             return dense_h
 
-    def hist_biRNN(self, scope):
+    def hist_biRNN(self, scope, idx):
         with tf.variable_scope(scope):
+            reuse = False
+            if idx != 0:
+                tf.get_variable_scope().reuse_variables()
+                reuse = True
             if scope == 'tourist':
-                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
-                seq_len = self.tourist_len
+                tourist_input_nl = tf.unstack(self.tourist_input_nl, axis=1)[idx]
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, tourist_input_nl)
+                seq_len = tf.unstack(self.tourist_len_nl, axis=1)[idx]
             elif scope == 'guide':
-                inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
-                seq_len = self.guide_len
+                guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx]
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
+                seq_len = tf.unstack(self.guide_len_nl, axis=1)[idx]
 
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            outputs = tf.layers.dense(inputs=outputs, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
             return outputs
 
     def nl_biRNN(self, history_summary):
@@ -102,10 +109,10 @@ class slu_model(object):
         self.unstack_tourist_hist = list()
         self.unstack_guide_hist = list()
         for i in range(self.hist_len):
-            self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
-            self.unstack_guide_hist.append(self.hist_cnn('guide', i))
-            #self.unstack_tourist_cnn_hist.append(self.hist_rnn('tourist', i))
-            #self.unstack_guide_hist.append(self.hist_rnn('guide', i))
+            #self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
+            #self.unstack_guide_hist.append(self.hist_cnn('guide', i))
+            self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
+            self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
         tourist_hist = tf.sigmoid(tf.concat(self.unstack_tourist_hist, axis=1))
         guide_hist = tf.sigmoid(tf.concat(self.unstack_guide_hist, axis=1))
         if not self.use_attention:
