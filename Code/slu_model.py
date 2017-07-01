@@ -5,9 +5,10 @@ from tensorflow.contrib import rnn
 class slu_model(object):
     def __init__(self, max_seq_len, intent_dim, use_attention):
         self.hidden_size = 128
-        self.intent_dim = intent_dim # one hot encoding
+        self.intent_dim = intent_dim  # one hot encoding
         self.embedding_dim = 200 # read from glove
-        self.total_word = 400002 # total word embedding vectors
+        # self.total_word = 400002 # total word embedding vectors
+        self.total_word = 400001 # total word embedding vectors
         self.max_seq_len = max_seq_len
         self.filter_sizes = [5,6,7]
         self.filter_depth = 128
@@ -30,10 +31,16 @@ class slu_model(object):
 
     def add_placeholders(self):
         # intent sequence, if we take previous n utterences as history, than its length is n*intent_dim
-        self.tourist_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
-        self.guide_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
-        self.tourist_len = tf.placeholder(tf.int32, [None])
-        self.guide_len = tf.placeholder(tf.int32, [None])
+        # self.tourist_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.tourist_input = tf.placeholder(tf.int32, [None, None, self.max_seq_len])
+        # self.guide_input = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.guide_input = tf.placeholder(tf.int32, [None, None, self.max_seq_len])
+
+        # self.tourist_len = tf.placeholder(tf.int32, [None])
+        self.tourist_len = tf.placeholder(tf.int32, [None, None])
+        # self.guide_len = tf.placeholder(tf.int32, [None])
+        self.guide_len = tf.placeholder(tf.int32, [None, None])
+
         self.nl_len = tf.placeholder(tf.int32, [None])
         # natural language input sequence, which is also the utterance we are going to predict(intents)
         self.input_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
@@ -65,8 +72,8 @@ class slu_model(object):
             h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
             return h_drop
 
-    def hist_biRNN(self, scope):
-        with tf.variable_scope(scope):
+    def hist_biRNN(self, scope, reuse=None):
+        with tf.variable_scope(scope, reuse=reuse):
             if scope == 'tourist':
                 inputs = tf.nn.embedding_lookup(self.intent_matrix, self.tourist_input)
                 seq_len = self.tourist_len
@@ -74,9 +81,20 @@ class slu_model(object):
                 inputs = tf.nn.embedding_lookup(self.intent_matrix, self.guide_input)
                 seq_len = self.guide_len
 
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            return outputs
+
+    def BiRNN(self, scope, reuse, inputs, seq_len):
+        with tf.variable_scope(scope, reuse=reuse):
+            model_inputs = tf.nn.embedding_lookup(self.intent_matrix, inputs)
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, model_inputs, sequence_length=seq_len, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
@@ -118,6 +136,7 @@ class slu_model(object):
             return role_attention
 
     def build_graph(self):
+        '''
         tourist_cnn_hist = self.hist_cnn('tourist')
         guide_cnn_hist = self.hist_cnn('guide')
         if self.use_attention == True:
@@ -127,11 +146,29 @@ class slu_model(object):
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+        '''
+
+        tourist_hist = tf.concat([
+            self.BiRNN('tourist', False, self.tourist_input[0], self.tourist_len[0]),
+            self.BiRNN('tourist', True, self.tourist_input[1], self.tourist_len[1]),
+            self.BiRNN('tourist', True, self.tourist_input[2], self.tourist_len[2])], axis=1)
+        guide_hist = tf.concat([
+            self.BiRNN('guide', False, self.guide_input[0], self.guide_len[0]),
+            self.BiRNN('guide', True, self.guide_input[1], self.guide_len[1]),
+            self.BiRNN('guide', True, self.guide_input[2], self.guide_len[2])], axis=1)
+
+        history_summary = tf.layers.dense(
+            inputs=tf.concat([tourist_hist, guide_hist], axis=1),
+            units=self.intent_dim,
+            kernel_initializer=tf.random_normal_initializer,
+            bias_initializer=tf.random_normal_initializer)
+
+        self.intent_output = history_summary
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
         #self.loss = tf.reduce_mean(tf.nn.weighted_cross_entropy_with_logits(self.labels, self.intent_output, 4))
-        
+
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         self.train_op = optimizer.minimize(self.loss)
