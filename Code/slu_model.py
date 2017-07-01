@@ -99,15 +99,17 @@ class slu_model(object):
             return outputs
 
     def sentence_attention(self):
-        self.unstack_tourist_cnn_hist = list()
-        self.unstack_guide_cnn_hist = list()
+        self.unstack_tourist_hist = list()
+        self.unstack_guide_hist = list()
         for i in range(self.hist_len):
-            self.unstack_tourist_cnn_hist.append(self.hist_cnn('tourist', i))
-            self.unstack_guide_cnn_hist.append(self.hist_cnn('guide', i))
-        tourist_cnn_hist = tf.sigmoid(tf.concat(self.unstack_tourist_cnn_hist, axis=1))
-        guide_cnn_hist = tf.sigmoid(tf.concat(self.unstack_guide_cnn_hist, axis=1))
+            self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
+            self.unstack_guide_hist.append(self.hist_cnn('guide', i))
+            #self.unstack_tourist_cnn_hist.append(self.hist_rnn('tourist', i))
+            #self.unstack_guide_hist.append(self.hist_rnn('guide', i))
+        tourist_hist = tf.sigmoid(tf.concat(self.unstack_tourist_hist, axis=1))
+        guide_hist = tf.sigmoid(tf.concat(self.unstack_guide_hist, axis=1))
         if not self.use_attention:
-            return tf.concat([tourist_cnn_hist, guide_cnn_hist], axis=1)
+            return tf.concat([tourist_hist, guide_hist], axis=1)
 
         with tf.variable_scope("sentence_attention"):
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
@@ -118,15 +120,15 @@ class slu_model(object):
             final_bw = tf.concat(final_states[1], axis=1)
             cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             # concat current output with cnn_hist
-            output_tourist = tf.concat([tourist_cnn_hist, cur_rnn_outputs], axis=1)
+            output_tourist = tf.concat([tourist_hist, cur_rnn_outputs], axis=1)
             weight_tourist = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_tourist, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
-            output_guide = tf.concat([guide_cnn_hist, cur_rnn_outputs], axis=1)
+            output_guide = tf.concat([guide_hist, cur_rnn_outputs], axis=1)
             weight_guide = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_guide, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
             tourist_attention = list()
             guide_attention = list()
             for i in range(3):
-                tourist_attention.append(tf.multiply(self.unstack_tourist_cnn_hist[i], tf.expand_dims(weight_tourist[i], axis=1)))
-                guide_attention.append(tf.multiply(self.unstack_guide_cnn_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
+                tourist_attention.append(tf.multiply(self.unstack_tourist_hist[i], tf.expand_dims(weight_tourist[i], axis=1)))
+                guide_attention.append(tf.multiply(self.unstack_guide_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
             tourist_attention = tf.add_n(tourist_attention)
             guide_attention = tf.add_n(guide_attention)
             sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
@@ -140,10 +142,10 @@ class slu_model(object):
 
     def add_loss(self):
         loss_ce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
-        stack_tourist_cnn_hist = tf.stack(self.unstack_tourist_cnn_hist, axis=1)
-        stack_guide_cnn_hist = tf.stack(self.unstack_guide_cnn_hist, axis=1)
-        loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_cnn_hist))
-        loss_intent_guide = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.guide_input_intent, logits=stack_guide_cnn_hist))
+        stack_tourist_hist = tf.stack(self.unstack_tourist_hist, axis=1)
+        stack_guide_hist = tf.stack(self.unstack_guide_hist, axis=1)
+        loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_hist))
+        loss_intent_guide = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.guide_input_intent, logits=stack_guide_hist))
         if self.use_mid_loss == True:
             self.loss = loss_ce + loss_intent_tourist + loss_intent_guide
         else:
