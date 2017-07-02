@@ -105,6 +105,16 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
+    def attention_biRNN(self, scope, inputs):
+        with tf.variable_scope(scope):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+            return outputs
+
     def attention(self):
         self.unstack_tourist_hist = list()
         self.unstack_guide_hist = list()
@@ -155,6 +165,9 @@ class slu_model(object):
                     guide_attention.append(tf.multiply(self.unstack_guide_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
                 tourist_attention = tf.add_n(tourist_attention)
                 guide_attention = tf.add_n(guide_attention)
+                # change to rnn
+                #rnn_tourist_attention = self.attention_biRNN("tourist_attention", tf.stack(tourist_attention, axis=1))
+                #rnn_guide_attention = self.attention_biRNN("guide_attention", tf.stack(guide_attention, axis=1))
                 sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
                 return sentence_attention
 

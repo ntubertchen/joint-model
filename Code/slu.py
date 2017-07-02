@@ -119,8 +119,8 @@ if __name__ == '__main__':
     max_seq_len = 40
     epoch = 30
     batch_size = 256
-    use_attention = "sentence"
-    use_mid_loss = True
+    use_attention = "None"
+    use_mid_loss = False
 
     data = slu_data()
     total_intent = data.total_intent
@@ -137,12 +137,12 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(batch_size, role='Tourist')
+            batch_nl, batch_intent = data.get_train_batch(batch_size)
             train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
             loss_to_minimize = model.loss
-            _, intent_output, loss, attention = sess.run([model.train_op, model.intent_output, loss_to_minimize, model.attention],
+            _, intent_output, loss = sess.run([model.train_op, model.intent_output, loss_to_minimize],
                     feed_dict={
                         model.tourist_input_intent:train_tourist_intent,
                         model.guide_input_intent:train_guide_intent,
@@ -155,8 +155,6 @@ if __name__ == '__main__':
                         model.predict_nl_len:nl_len,
                         model.dropout_keep_prob:0.75
                         })
-            if cnt == 0:
-                print(np.sum(attention, axis=0))
                 
             total_loss += loss
             for pred, label in zip(intent_output, train_target_intent):
