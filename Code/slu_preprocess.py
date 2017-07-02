@@ -17,6 +17,7 @@ class slu_data():
         self.total_word = None
         self.train_tourist_indices = list()
         self.train_guide_indices = list()
+        self.train_guide_indices = list()
         self.get_talker(train_talker)
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
@@ -58,6 +59,10 @@ class slu_data():
         elif role == 'Tourist':
             random.shuffle(self.train_tourist_indices)
             batch_indices = self.train_tourist_indices[:batch_size]
+        elif role == 'Guide':
+            random.shuffle(self.train_guide_indices)
+            batch_indices = self.train_guide_indices[:batch_size]
+
         ret_nl_batch = list()
         ret_intent_batch = list()
         for batch_idx in batch_indices:

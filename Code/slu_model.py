@@ -9,7 +9,7 @@ class slu_model(object):
         self.embedding_dim = 200 # read from glove
         self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
-        self.filter_sizes = [3,4,5]
+        self.filter_sizes = [2,3,4]
         self.filter_depth = 128
         self.hist_len = 3
         self.use_attention = use_attention
@@ -105,44 +105,61 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
-    def sentence_attention(self):
+    def attention(self):
         self.unstack_tourist_hist = list()
         self.unstack_guide_hist = list()
         for i in range(self.hist_len):
-            #self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
-            #self.unstack_guide_hist.append(self.hist_cnn('guide', i))
-            self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
-            self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
+            self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
+            self.unstack_guide_hist.append(self.hist_cnn('guide', i))
+            #self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
+            #self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
         tourist_hist = tf.sigmoid(tf.concat(self.unstack_tourist_hist, axis=1))
         guide_hist = tf.sigmoid(tf.concat(self.unstack_guide_hist, axis=1))
-        if not self.use_attention:
+
+        if self.use_attention == "None":
             return tf.concat([tourist_hist, guide_hist], axis=1)
 
-        with tf.variable_scope("sentence_attention"):
-            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.predict_nl_len, dtype=tf.float32)
-            final_fw = tf.concat(final_states[0], axis=1)
-            final_bw = tf.concat(final_states[1], axis=1)
-            cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
-            # concat current output with cnn_hist
-            output_tourist = tf.concat([tourist_hist, cur_rnn_outputs], axis=1)
-            weight_tourist = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_tourist, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
-            output_guide = tf.concat([guide_hist, cur_rnn_outputs], axis=1)
-            weight_guide = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_guide, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
-            tourist_attention = list()
-            guide_attention = list()
-            for i in range(3):
-                tourist_attention.append(tf.multiply(self.unstack_tourist_hist[i], tf.expand_dims(weight_tourist[i], axis=1)))
-                guide_attention.append(tf.multiply(self.unstack_guide_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
-            tourist_attention = tf.add_n(tourist_attention)
-            guide_attention = tf.add_n(guide_attention)
-            sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
-            return sentence_attention
+        elif self.use_attention == "role":
+            with tf.variable_scope("role_attention"):
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+                lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+                lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.predict_nl_len, dtype=tf.float32)
+                final_fw = tf.concat(final_states[0], axis=1)
+                final_bw = tf.concat(final_states[1], axis=1)
+                cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+                outputs = tf.concat([tourist_hist, guide_hist, cur_rnn_outputs], axis=1)
+                self.attention = attention = tf.nn.softmax(tf.layers.dense(inputs=outputs, units=2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer))
+                role_attention = tf.add(tf.multiply(tourist_hist, tf.expand_dims(tf.unstack(attention, axis=1)[0], axis=1)), tf.multiply(guide_hist, tf.expand_dims(tf.unstack(attention, axis=1)[1], axis=1)))
+                return role_attention       
+
+        elif self.use_attention == "sentence":
+            with tf.variable_scope("sentence_attention"):
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+                lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+                lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.predict_nl_len, dtype=tf.float32)
+                final_fw = tf.concat(final_states[0], axis=1)
+                final_bw = tf.concat(final_states[1], axis=1)
+                cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
+                # concat current output with cnn_hist
+                output_tourist = tf.concat([tourist_hist, cur_rnn_outputs], axis=1)
+                weight_tourist = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_tourist, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
+                output_guide = tf.concat([guide_hist, cur_rnn_outputs], axis=1)
+                weight_guide = tf.unstack(tf.nn.softmax(tf.layers.dense(inputs=output_guide, units=self.hist_len, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)), axis=1)
+                self.attention = weight_tourist
+                tourist_attention = list()
+                guide_attention = list()
+                for i in range(3):
+                    tourist_attention.append(tf.multiply(self.unstack_tourist_hist[i], tf.expand_dims(weight_tourist[i], axis=1)))
+                    guide_attention.append(tf.multiply(self.unstack_guide_hist[i], tf.expand_dims(weight_guide[i], axis=1)))
+                tourist_attention = tf.add_n(tourist_attention)
+                guide_attention = tf.add_n(guide_attention)
+                sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
+                return sentence_attention
 
     def build_graph(self):
-        concat_output = self.sentence_attention()
+        concat_output = self.attention()
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
@@ -157,6 +174,7 @@ class slu_model(object):
             self.loss = loss_ce + loss_intent_tourist + loss_intent_guide
         else:
             self.loss = loss_ce
+        self.first_loss = loss_intent_tourist + loss_intent_guide
         
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)

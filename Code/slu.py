@@ -118,8 +118,8 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 40
     epoch = 30
-    batch_size = 16
-    use_attention = False
+    batch_size = 256
+    use_attention = "sentence"
     use_mid_loss = True
 
     data = slu_data()
@@ -135,14 +135,14 @@ if __name__ == '__main__':
         pred_outputs = list()
         train_targets = list()
         total_loss = 0.0
-        for _ in range(50):
+        for cnt in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(batch_size)
+            batch_nl, batch_intent = data.get_train_batch(batch_size, role='Tourist')
             train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
-            # add nl_indices to gather_nd of bi-rnn output
-            _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
+            loss_to_minimize = model.loss
+            _, intent_output, loss, attention = sess.run([model.train_op, model.intent_output, loss_to_minimize, model.attention],
                     feed_dict={
                         model.tourist_input_intent:train_tourist_intent,
                         model.guide_input_intent:train_guide_intent,
@@ -153,8 +153,11 @@ if __name__ == '__main__':
                         model.tourist_len_nl:tourist_len_nl,
                         model.guide_len_nl:guide_len_nl,
                         model.predict_nl_len:nl_len,
-                        model.dropout_keep_prob:0.5
+                        model.dropout_keep_prob:0.75
                         })
+            if cnt == 0:
+                print(np.sum(attention, axis=0))
+                
             total_loss += loss
             for pred, label in zip(intent_output, train_target_intent):
                 pred_act = pred[:5] # first 5 is act
@@ -211,8 +214,8 @@ if __name__ == '__main__':
         pred_vec = np.array(list())
         label_vec = np.array(list())
         for pred, label, talker in zip(test_output, test_target_intent, test_talker):
-            #if talker.strip('\n') == 'Tourist':
-            #    continue
+            if talker.strip('\n') == 'Guide':
+                continue
             pred_act = pred[:5] # first 5 is act
             pred_attribute = pred[5:] # remaining is attribute
             binary = Binarizer(threshold=0.5)
