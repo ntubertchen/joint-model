@@ -76,11 +76,12 @@ class slu_data():
             ret_distance_batch.append(distance)
         return ret_nl_batch, ret_intent_batch, ret_distance_batch
 
-    def get_train_batch(self, batch_size, role=None):
+    def get_train_batch(self, input_indices, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         if role == None:
             random.shuffle(self.train_batch_indices)
             batch_indices = self.train_batch_indices[:batch_size]
+            batch_indices = input_indices
         elif role == 'Tourist':
             random.shuffle(self.train_tourist_indices)
             batch_indices = self.train_tourist_indices[:batch_size]
