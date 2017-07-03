@@ -11,7 +11,7 @@ from sklearn.preprocessing import Binarizer
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
-def one_hot(idx, T):
+def one_hot(idx, T, weight=0):
     # intent dim is 26, 5 is act, 21 is attribute
     if T == 'act':
         ret = np.zeros(5)
@@ -22,7 +22,7 @@ def one_hot(idx, T):
     elif T == 'mix':
         ret = np.zeros(26)
         for i in idx:
-            ret[i] = 1.0
+            ret[i] = 1.0 / float(weight)
     return ret
 
 def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
@@ -73,7 +73,7 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
 
     return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
-def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
+def process_intent(batch_nl, batch_intent, batch_distance, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
     train_tourist = list()
     train_guide = list()
     train_nl = list()
@@ -83,19 +83,20 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
     guide_len = list()
     nl_len = list()
 
-    for i in batch_intent:
+    for i, j in zip(batch_intent, batch_distance):
         temp_tourist_list = list()
         temp_guide_list = list()
         history = i[:-1]
+        distance = j[:-1]
         hist_len = len(history) / 2 # tourist, guide
         # tourist part
-        for tup in history[:hist_len]:
+        for tup, weight in zip(history[:hist_len], distance[:hist_len]):
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_tourist_list.append(one_hot(d, 'mix'))
+            temp_tourist_list.append(one_hot(d, 'mix', weight))
         # guide part
-        for tup in history[hist_len:]:
+        for tup, weight in zip(history[hist_len:], distance[hist_len:]):
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_guide_list.append(one_hot(d, 'mix'))
+            temp_guide_list.append(one_hot(d, 'mix', weight))
         train_guide.append(temp_guide_list)
         train_tourist.append(temp_tourist_list)
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
@@ -137,8 +138,8 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(batch_size)
-            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            batch_nl, batch_intent, batch_distance = data.get_train_batch(batch_size)
+            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
             loss_to_minimize = model.loss
@@ -172,16 +173,57 @@ if __name__ == '__main__':
         print "Epoch:", cur_epoch
         print "f1 score:", f1_score(pred_outputs, train_targets, average='binary')
         print "training loss:", total_loss
+        if cur_epoch == 10:
+            # print training result for Chen
+            pred_outputs = list()
+            train_targets = list()
+            batch_nl, batch_intent, batch_distance = data.get_all_train()
+            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
+            train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            assert train_target_intent == train_target_nl
+            intent_output = sess.run(model.intent_output,
+                    feed_dict={
+                        model.tourist_input_intent:train_tourist_intent,
+                        model.guide_input_intent:train_guide_intent,
+                        model.labels:train_target_intent,
+                        model.tourist_input_nl:train_tourist_nl,
+                        model.guide_input_nl:train_guide_nl,
+                        model.predict_nl:train_nl,
+                        model.tourist_len_nl:tourist_len_nl,
+                        model.guide_len_nl:guide_len_nl,
+                        model.predict_nl_len:nl_len,
+                        model.dropout_keep_prob:1.0
+                        })
+            for pred, label in zip(intent_output, train_target_intent):
+                pred_act = pred[:5] # first 5 is act
+                pred_attribute = pred[5:] # remaining is attribute
+                binary = Binarizer(threshold=0.5)
+                act_logit = one_hot(np.argmax(pred_act), 'act')
+                attribute_logit = binary.fit_transform([pred_attribute])
+                if np.sum(attribute_logit) == 0:
+                    attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
+                label = binary.fit_transform([label])
+                pred_outputs.append(np.append(act_logit, attribute_logit))
+            ans = list()
+            f_out = open('out.txt', 'w')
+            for t in pred_outputs:
+                s = ''
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + (data.whole_dict[idx]) + '-'
+                f_out.write(s.strip('-')+'\n')
+                ans.append(s)
+            f_out.close()
 
         # Test
-        test_batch_nl, test_batch_intent = data.get_test_batch()
-        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        test_batch_nl, test_batch_intent, test_batch_distance = data.get_test_batch()
+        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(test_batch_nl, test_batch_intent, test_batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
         test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         assert test_target_intent == test_target_nl
         test_output = sess.run(model.intent_output,
                 feed_dict={
-                    #model.tourist_input_intent:test_tourist_intent[:5000],
-                    #model.guide_input_intent:test_guide_intent[:5000],
+                    model.tourist_input_intent:test_tourist_intent[:5000],
+                    model.guide_input_intent:test_guide_intent[:5000],
                     model.labels:test_target_intent[:5000],
                     model.tourist_input_nl:test_tourist_nl[:5000],
                     model.guide_input_nl:test_guide_nl[:5000],
@@ -194,8 +236,8 @@ if __name__ == '__main__':
         
         test_output = np.concatenate((test_output, sess.run(model.intent_output,
                 feed_dict={
-                    #model.tourist_input_intent:test_tourist_intent[5000:],
-                    #model.guide_input_intent:test_guide_intent[5000:],
+                    model.tourist_input_intent:test_tourist_intent[5000:],
+                    model.guide_input_intent:test_guide_intent[5000:],
                     model.labels:test_target_intent[5000:],
                     model.tourist_input_nl:test_tourist_nl[5000:],
                     model.guide_input_nl:test_guide_nl[5000:],
@@ -211,6 +253,7 @@ if __name__ == '__main__':
         test_talker = open('Data/test/talker', 'r')
         pred_vec = np.array(list())
         label_vec = np.array(list())
+        output_test = list()
         for pred, label, talker in zip(test_output, test_target_intent, test_talker):
             if talker.strip('\n') == 'Guide':
                 continue
@@ -223,10 +266,21 @@ if __name__ == '__main__':
                 attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
             label = binary.fit_transform([label])
             pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
+            output_test.append(np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
         f1sc = f1_score(pred_vec, label_vec, average='binary')
         print "testing f1 score:", f1sc
         test_f1_scores.append(f1sc)
         test_talker.close()
+        if cur_epoch == 10:
+            f_out_test = open('out_test.txt', 'w')
+            for t in output_test:
+                s = ''
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + (data.whole_dict[idx]) + '-'
+                f_out_test.write(s.strip('-')+'\n')
+            f_out_test.close()
+
     print "max test f1 score:", max(test_f1_scores)
     sess.close()

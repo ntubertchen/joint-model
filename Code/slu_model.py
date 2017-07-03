@@ -46,11 +46,11 @@ class slu_model(object):
         with tf.variable_scope(scope):
             if idx != 0:
                 tf.get_variable_scope().reuse_variables()
-            if scope == 'tourist':
+            if scope == 'tourist_cnn':
                 # tourist_input_nl should now have [batch_size, 3, max_seq_len]
                 tourist_input_nl = tf.unstack(self.tourist_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, tourist_input_nl)
-            elif scope == 'guide':
+            elif scope == 'guide_cnn':
                 guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
             pooled_outputs = list()
@@ -67,8 +67,9 @@ class slu_model(object):
             dense_h = tf.layers.dense(inputs=h_drop, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
             return dense_h
 
-    def hist_biRNN(self, scope, idx):
+    def hist_biRNN(self, scope, inputs):
         with tf.variable_scope(scope):
+            '''
             reuse = False
             if idx != 0:
                 tf.get_variable_scope().reuse_variables()
@@ -81,10 +82,10 @@ class slu_model(object):
                 guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
                 seq_len = tf.unstack(self.guide_len_nl, axis=1)[idx]
-
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, reuse=reuse)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=seq_len, dtype=tf.float32)
+            '''
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
@@ -119,8 +120,8 @@ class slu_model(object):
         self.unstack_tourist_hist = list()
         self.unstack_guide_hist = list()
         for i in range(self.hist_len):
-            self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
-            self.unstack_guide_hist.append(self.hist_cnn('guide', i))
+            self.unstack_tourist_hist.append(self.hist_cnn('tourist_cnn', i))
+            self.unstack_guide_hist.append(self.hist_cnn('guide_cnn', i))
             #self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
             #self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
         tourist_hist = tf.sigmoid(tf.concat(self.unstack_tourist_hist, axis=1))
@@ -172,13 +173,18 @@ class slu_model(object):
                 return sentence_attention
 
     def build_graph(self):
-        concat_output = self.attention()
+        #concat_output = self.attention()
+        xx = self.hist_biRNN("tourist_rnn", self.tourist_input_intent)
+        yy = self.hist_biRNN("guide_rnn", self.guide_input_intent)
+        concat_output = tf.concat([xx,yy], axis=1)
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
+        
         loss_ce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
+        '''
         stack_tourist_hist = tf.stack(self.unstack_tourist_hist, axis=1)
         stack_guide_hist = tf.stack(self.unstack_guide_hist, axis=1)
         loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_hist))
@@ -188,7 +194,8 @@ class slu_model(object):
         else:
             self.loss = loss_ce
         self.first_loss = loss_intent_tourist + loss_intent_guide
-        
+        '''
+        self.loss = loss_ce
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         self.train_op = optimizer.minimize(self.loss)

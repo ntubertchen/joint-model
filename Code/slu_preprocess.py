@@ -11,6 +11,8 @@ class slu_data():
         valid_intent = open('Data/valid/intent', 'r')
         test_intent = open('Data/test/intent', 'r')
         train_talker = open('Data/train/talker', 'r')
+        train_info = open('Data/train/info', 'r')
+        test_info = open('Data/test/info', 'r')
         self.intent_act_dict = None
         self.intent_attri_dict = None
         self.total_intent = None
@@ -18,6 +20,8 @@ class slu_data():
         self.train_tourist_indices = list()
         self.train_guide_indices = list()
         self.train_guide_indices = list()
+        self.train_distance = self.get_distance(train_info)
+        self.test_distance = self.get_distance(test_info)
         self.get_talker(train_talker)
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
@@ -40,6 +44,13 @@ class slu_data():
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
     
+    def get_distance(self, data_file):
+        ret_dist = list()
+        for idx, line in enumerate(data_file):
+            dist = line.split("***next***")[:-1]
+            ret_dist.append(dist)
+        return ret_dist
+    
     def get_talker(self, data_file):
         for idx, line in enumerate(data_file):
             talker = line.strip('\n')
@@ -50,6 +61,20 @@ class slu_data():
             else:
                 print "cannot be here!"
                 exit(1)
+
+    def get_all_train(self):
+        indices = [i for i in range(len(self.train_data))]
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        ret_distance_batch = list()
+        for batch_idx in indices:
+            nl_sentences = self.train_data[batch_idx]
+            intent = self.train_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+            distance = self.train_distance[batch_idx]
+            ret_distance_batch.append(distance)
+        return ret_nl_batch, ret_intent_batch, ret_distance_batch
 
     def get_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
@@ -65,12 +90,15 @@ class slu_data():
 
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_distance_batch = list()
         for batch_idx in batch_indices:
             nl_sentences = self.train_data[batch_idx]
             intent = self.train_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            distance = self.train_distance[batch_idx]
+            ret_distance_batch.append(distance)
+        return ret_nl_batch, ret_intent_batch, ret_distance_batch
 
     def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
@@ -90,12 +118,15 @@ class slu_data():
         batch_indices = self.test_indices
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_dist_batch = list()
         for batch_idx in batch_indices:
             nl_sentences = self.test_data[batch_idx]
             intent = self.test_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            distance = self.test_distance[batch_idx]
+            ret_dist_batch.append(distance)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch
 
     def convertintent2id(self, data_file):
         intent_corpus = list()
@@ -122,7 +153,13 @@ class slu_data():
             self.intent_act_dict = act_dict
             self.intent_attri_dict = attri_dict
             self.total_intent = len(act_dict)+len(attri_dict)
-        
+            # construct whole dict for reconstructing intent output
+            self.whole_dict = defaultdict()
+            for k, v in act_dict.iteritems():
+                self.whole_dict[v] = k
+            for k, v in attri_dict.iteritems():
+                self.whole_dict[v+len(act_dict)] = k
+
         # convert act and attributes to id
         ret_intent = list()
         for intents in intent_corpus:
