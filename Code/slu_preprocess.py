@@ -4,6 +4,7 @@ from collections import defaultdict
 
 class slu_data():
     def __init__(self):
+        self.hist_len = 3
         train_nl = open('Data/train/seq.in', 'r')
         valid_nl = open('Data/valid/seq.in', 'r')
         test_nl = open('Data/test/seq.in', 'r')
@@ -11,6 +12,7 @@ class slu_data():
         valid_intent = open('Data/valid/intent', 'r')
         test_intent = open('Data/test/intent', 'r')
         train_talker = open('Data/train/talker', 'r')
+        test_talker = open('Data/test/talker', 'r')
         train_info = open('Data/train/info', 'r')
         test_info = open('Data/test/info', 'r')
         self.intent_act_dict = None
@@ -20,6 +22,8 @@ class slu_data():
         self.train_tourist_indices = list()
         self.train_guide_indices = list()
         self.train_guide_indices = list()
+        self.train_history, self.train_mapping = self.read_train_history(train_talker)
+        self.test_history, self.test_mapping = self.read_test_history(test_talker)
         self.train_distance = self.get_distance(train_info)
         self.test_distance = self.get_distance(test_info)
         self.get_talker(train_talker)
@@ -37,13 +41,11 @@ class slu_data():
         assert len(self.train_data) == len(self.train_intent)
         assert len(self.valid_data) == len(self.valid_intent)
         assert len(self.test_data) == len(self.test_intent)
-        print 'train data size:', len(self.train_data)
-        print 'valid data size:', len(self.valid_data)
-        print 'test data size:', len(self.test_data)
-        self.train_batch_indices = [i for i in range(len(self.train_data))]
-        self.valid_batch_indices = [i for i in range(len(self.valid_data))]
-        self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
-    
+        self.train_batch_indices = [i for i in range(len(self.train_history))]
+        self.test_batch_indices = [i for i in range(len(self.test_history))]
+        self.train_original_indices = [i for i in range(len(self.train_data))]
+        self.test_original_indices = [i for i in range(len(self.test_data))]
+
     def get_distance(self, data_file):
         ret_dist = list()
         for idx, line in enumerate(data_file):
@@ -76,12 +78,75 @@ class slu_data():
             ret_distance_batch.append(distance)
         return ret_nl_batch, ret_intent_batch, ret_distance_batch
 
-    def get_train_batch(self, input_indices, role=None):
+    def read_train_history(self, data_file):
+            counter = 0 
+            tourist = [-1,-1,-1]
+            guide = [-1,-1,-1]
+            number = [1186,2553,3643,4668,5834,6867,8058,8964,10627,11407,12818,13812,14832]
+            batch = []
+            mapping = []
+            for talker in data_file:
+                    if counter in number:
+                            tourist = [-1,-1,-1]
+                            guide = [-1,-1,-1]
+                    tmp = []
+                    if talker.strip() == "Guide":
+                            for i in tourist:
+                                    tmp.append(i)
+                            for i in guide:
+                                    tmp.append(i)
+                            batch.append(tmp)
+                            mapping.append(counter)
+                    if talker.strip() == "Guide":
+                            guide = guide[1:]
+                            guide.append(counter)
+                            counter += 1
+                    elif talker.strip() == "Tourist":
+                            tourist = tourist[1:]
+                            tourist.append(counter)
+                            counter += 1
+                    else:
+                            print ("talker error",talker)
+
+            return batch,mapping
+
+    def read_test_history(self, data_file):
+	counter = 0
+	number = [709,1568,2813,4216,5286,6719,7979,9077]
+	tourist = [-1,-1,-1]
+	guide = [-1,-1,-1]
+	batch = []
+        mapping = []
+	for talker in data_file:
+		if counter in number:
+			tourist = [-1,-1,-1]
+			guide = [-1,-1,-1]
+		tmp = []
+		if talker.strip() == "Guide":
+			for i in tourist:
+				tmp.append(i)
+			for i in guide:
+				tmp.append(i)
+			batch.append(tmp)
+			mapping.append(counter)
+		if talker.strip() == "Guide":
+			guide = guide[1:]
+			guide.append(counter)
+			counter += 1
+		elif talker.strip() == "Tourist":
+			tourist = tourist[1:]
+			tourist.append(counter)
+			counter += 1
+		else:
+			print ("talker error")
+
+	return batch,mapping
+
+    def get_original_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         if role == None:
-            random.shuffle(self.train_batch_indices)
-            batch_indices = self.train_batch_indices[:batch_size]
-            batch_indices = input_indices
+            random.shuffle(self.train_original_indices)
+            batch_indices = self.train_original_indices[:batch_size]
         elif role == 'Tourist':
             random.shuffle(self.train_tourist_indices)
             batch_indices = self.train_tourist_indices[:batch_size]
@@ -101,6 +166,53 @@ class slu_data():
             ret_distance_batch.append(distance)
         return ret_nl_batch, ret_intent_batch, ret_distance_batch
 
+    def get_original_test_batch(self):
+        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
+        batch_indices = self.test_original_indices
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        ret_dist_batch = list()
+        for batch_idx in batch_indices:
+            nl_sentences = self.test_data[batch_idx]
+            intent = self.test_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+            distance = self.test_distance[batch_idx]
+            ret_dist_batch.append(distance)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch
+
+    def get_train_batch(self, batch_size, role=None):
+        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
+        if role == None:
+            random.shuffle(self.train_batch_indices)
+            batch_indices = self.train_batch_indices[:batch_size]
+        elif role == 'Tourist':
+            random.shuffle(self.train_tourist_indices)
+            batch_indices = self.train_tourist_indices[:batch_size]
+        elif role == 'Guide':
+            random.shuffle(self.train_guide_indices)
+            batch_indices = self.train_guide_indices[:batch_size]
+
+        cold_start_intent = list()
+        for i in range(self.hist_len * 2 + 1):
+            cold_start_intent.append((self.intent_act_dict['None'], [len(self.intent_act_dict)+self.intent_attri_dict['none']]))
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        ret_distance_batch = list()
+        for hist_idx, map_idx in zip(batch_indices, self.train_mapping):
+            # flatten the input
+            for batch_idx in self.train_history[hist_idx]:
+                nl_sentences = self.train_data[batch_idx]
+                intent = self.train_intent[batch_idx]
+                intent[-1] = self.train_intent[map_idx][-1]
+                if batch_idx == -1:
+                    intent = cold_start_intent
+                ret_nl_batch.append(nl_sentences)
+                ret_intent_batch.append(intent)
+                distance = self.train_distance[batch_idx]
+                ret_distance_batch.append(distance)
+        return ret_nl_batch, ret_intent_batch, ret_distance_batch
+
     def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.valid_batch_indices)
@@ -116,17 +228,26 @@ class slu_data():
 
     def get_test_batch(self):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
-        batch_indices = self.test_indices
+        batch_indices = self.test_batch_indices
         ret_nl_batch = list()
         ret_intent_batch = list()
         ret_dist_batch = list()
-        for batch_idx in batch_indices:
-            nl_sentences = self.test_data[batch_idx]
-            intent = self.test_intent[batch_idx]
-            ret_nl_batch.append(nl_sentences)
-            ret_intent_batch.append(intent)
-            distance = self.test_distance[batch_idx]
-            ret_dist_batch.append(distance)
+        cold_start_intent = list()
+        for i in range(self.hist_len * 2 + 1):
+            cold_start_intent.append((self.intent_act_dict['None'], [len(self.intent_act_dict)+self.intent_attri_dict['none']]))
+        for hist_idx, map_idx in zip(batch_indices, self.test_mapping):
+            for batch_idx in self.test_history[hist_idx]:
+                nl_sentences = self.test_data[batch_idx]
+                #if batch_idx == -1:
+                #    nl_sentences = cold_start_nl
+                intent = self.test_intent[batch_idx]
+                intent[-1] = self.test_intent[map_idx][-1]
+                if batch_idx == -1:
+                    intent = cold_start_intent
+                ret_nl_batch.append(nl_sentences)
+                ret_intent_batch.append(intent)
+                distance = self.test_distance[batch_idx]
+                ret_dist_batch.append(distance)
         return ret_nl_batch, ret_intent_batch, ret_dist_batch
 
     def convertintent2id(self, data_file):

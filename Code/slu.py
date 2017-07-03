@@ -119,7 +119,7 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 40
     epoch = 30
-    batch_size = 256
+    batch_size = 40
     use_attention = "None"
     use_mid_loss = False
 
@@ -138,12 +138,21 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent, batch_distance = data.get_train_batch(input_indices)
+            if cur_epoch < 10:
+                batch_nl, batch_intent, batch_distance = data.get_original_train_batch(batch_size)
+            else:
+                batch_nl, batch_intent, batch_distance = data.get_train_batch(batch_size)
             train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
-            loss_to_minimize = model.loss
-            _, intent_output, loss = sess.run([model.train_op, model.intent_output, loss_to_minimize],
+            if cur_epoch < 10:
+                loss_to_minimize = model.loss
+                train_op = model.train_op
+            else:
+                train_op = model.sap_train_op
+                loss_to_minimize = model.sap_loss
+
+            _, intent_output, loss = sess.run([train_op, model.intent_output, loss_to_minimize],
                     feed_dict={
                         model.tourist_input_intent:train_tourist_intent,
                         model.guide_input_intent:train_guide_intent,
@@ -216,7 +225,10 @@ if __name__ == '__main__':
             f_out.close()
 
         # Test
-        test_batch_nl, test_batch_intent, test_batch_distance = data.get_test_batch()
+        if cur_epoch < 10:
+            test_batch_nl, test_batch_intent, test_batch_distance = data.get_original_test_batch()
+        else:
+            test_batch_nl, test_batch_intent, test_batch_distance = data.get_test_batch()
         test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(test_batch_nl, test_batch_intent, test_batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
         test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         assert test_target_intent == test_target_nl

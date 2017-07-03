@@ -27,7 +27,7 @@ class slu_model(object):
         self.init_embedding = self.embedding_matrix.assign(self.read_embedding_matrix)
 
     def add_variables(self):
-        self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, name="glove_embedding")
+        self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, trainable=False, name="glove_embedding")
 
     def add_placeholders(self):
         self.tourist_input_intent = tf.placeholder(tf.float32, [None, self.hist_len, self.intent_dim])
@@ -180,9 +180,30 @@ class slu_model(object):
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
         final_output = self.nl_biRNN(history_summary)
         self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+	self.sap_tag_input = tf.reshape(self.intent_output,[-1, self.hist_len*2, self.intent_dim])
+	self.sap_tourist_input, self.sap_guide_input = tf.split(self.sap_tag_input, num_or_size_splits=2, axis=1)
+        with tf.variable_scope("SAP"):
+            self.sap_pred_out = self.sap_two_model(self.sap_tourist_input,self.sap_guide_input)
+            self.sap_logit = tf.sigmoid(self.sap_pred_out)
+
+    def sap_two_model(self, sap_tourist_input,sap_guide_input):
+	sap_tourist_input = tf.unstack(sap_tourist_input, self.hist_len, 1)
+	sap_guide_input = tf.unstack(sap_guide_input, self.hist_len, 1)
+	with tf.variable_scope('tourist_sap'):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, forget_bias=1.0, activation=tf.tanh)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, forget_bias=1.0, activation=tf.tanh)
+	    _,fw,bw = rnn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, sap_tourist_input,dtype=tf.float32)
+	tourist_hidden_layer = tf.concat([fw[-1],bw[-1]],1)
+	with tf.variable_scope('guide_sap'):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, forget_bias=1.0, activation=tf.tanh)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size, forget_bias=1.0, activation=tf.tanh)
+	    _,fw,bw = rnn.static_bidirectional_rnn(lstm_fw_cell, lstm_bw_cell, sap_guide_input,dtype=tf.float32)
+	guide_hidden_layer = tf.concat([fw[-1],bw[-1]],1)
+	concated_hidden_layer = tf.concat([tourist_hidden_layer,guide_hidden_layer],1)
+	sap_output = tf.layers.dense(inputs=concated_hidden_layer, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+	return sap_output
 
     def add_loss(self):
-        
         loss_ce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
         '''
         stack_tourist_hist = tf.stack(self.unstack_tourist_hist, axis=1)
@@ -196,6 +217,15 @@ class slu_model(object):
         self.first_loss = loss_intent_tourist + loss_intent_guide
         '''
         self.loss = loss_ce
+        self.sap_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.unstack(tf.reshape(self.labels, [-1,self.hist_len*2, self.intent_dim]), axis=1)[0], logits=self.sap_logit))
+
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         self.train_op = optimizer.minimize(self.loss)
+        tvars = tf.trainable_variables()
+        for var in tvars:
+            if "SAP" not in var.name:
+                tvars.remove(var)
+        
+        sap_optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+        self.sap_train_op = sap_optimizer.minimize(self.sap_loss, var_list=tvars)
