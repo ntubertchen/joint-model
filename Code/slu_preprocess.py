@@ -107,7 +107,6 @@ class slu_data():
                             counter += 1
                     else:
                             print ("talker error",talker)
-
             return batch,mapping
 
     def read_test_history(self, data_file):
@@ -199,12 +198,12 @@ class slu_data():
         ret_nl_batch = list()
         ret_intent_batch = list()
         ret_distance_batch = list()
-        for hist_idx, map_idx in zip(batch_indices, self.train_mapping):
+        for hist_idx in batch_indices:
             # flatten the input
             for batch_idx in self.train_history[hist_idx]:
                 nl_sentences = self.train_data[batch_idx]
                 intent = self.train_intent[batch_idx]
-                intent[-1] = self.train_intent[map_idx][-1]
+                intent[-1] = self.train_intent[self.train_mapping[hist_idx]][-1]
                 if batch_idx == -1:
                     intent = cold_start_intent
                 ret_nl_batch.append(nl_sentences)
@@ -235,13 +234,13 @@ class slu_data():
         cold_start_intent = list()
         for i in range(self.hist_len * 2 + 1):
             cold_start_intent.append((self.intent_act_dict['None'], [len(self.intent_act_dict)+self.intent_attri_dict['none']]))
-        for hist_idx, map_idx in zip(batch_indices, self.test_mapping):
+        for hist_idx in batch_indices:
             for batch_idx in self.test_history[hist_idx]:
                 nl_sentences = self.test_data[batch_idx]
                 #if batch_idx == -1:
                 #    nl_sentences = cold_start_nl
                 intent = self.test_intent[batch_idx]
-                intent[-1] = self.test_intent[map_idx][-1]
+                intent[-1] = self.test_intent[self.test_mapping[hist_idx]][-1]
                 if batch_idx == -1:
                     intent = cold_start_intent
                 ret_nl_batch.append(nl_sentences)

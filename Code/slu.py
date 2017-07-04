@@ -119,7 +119,7 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 40
     epoch = 30
-    batch_size = 40
+    batch_size = 256
     use_attention = "None"
     use_mid_loss = False
 
@@ -131,6 +131,7 @@ if __name__ == '__main__':
     # read in the glove embedding matrix
     sess.run(model.init_embedding, feed_dict={model.read_embedding_matrix:data.embedding_matrix})
     test_f1_scores = list()
+    switch_epoch = 1
     # Train
     for cur_epoch in range(epoch):
         pred_outputs = list()
@@ -138,14 +139,15 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            if cur_epoch < 10:
+            if cur_epoch < switch_epoch:
                 batch_nl, batch_intent, batch_distance = data.get_original_train_batch(batch_size)
             else:
+                batch_size = 16
                 batch_nl, batch_intent, batch_distance = data.get_train_batch(batch_size)
             train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, batch_distance, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
-            if cur_epoch < 10:
+            if cur_epoch < switch_epoch:
                 loss_to_minimize = model.loss
                 train_op = model.train_op
             else:
@@ -225,7 +227,7 @@ if __name__ == '__main__':
             f_out.close()
 
         # Test
-        if cur_epoch < 10:
+        if cur_epoch < switch_epoch:
             test_batch_nl, test_batch_intent, test_batch_distance = data.get_original_test_batch()
         else:
             test_batch_nl, test_batch_intent, test_batch_distance = data.get_test_batch()
@@ -266,7 +268,11 @@ if __name__ == '__main__':
         pred_vec = np.array(list())
         label_vec = np.array(list())
         output_test = list()
-        for pred, label, talker in zip(test_output, test_target_intent, test_talker):
+        if cur_epoch < switch_epoch:
+            ground_truth = test_target_intent
+        else:
+            ground_truth = np.squeeze(np.split(np.array(test_target_intent).reshape(-1, 6, 26), 6, axis=1)[0])
+        for pred, label, talker in zip(test_output, ground_truth, test_talker):
             if talker.strip('\n') == 'Guide':
                 continue
             pred_act = pred[:5] # first 5 is act
