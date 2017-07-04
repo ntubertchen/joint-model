@@ -73,32 +73,42 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
 
     return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
-def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
+def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
     train_tourist = list()
     train_guide = list()
     train_nl = list()
+    tourist_dist = list()
+    guide_dist = list()
     train_target = list()
     target_idx = list()
     tourist_len = list()
     guide_len = list()
     nl_len = list()
 
-    for i in batch_intent:
+    for i, j in zip(batch_intent, batch_dist):
         temp_tourist_list = list()
         temp_guide_list = list()
+        temp_guide_dist = list()
+        temp_tourist_dist = list()
         history = i[:-1]
+        dist = j[:-1]
         hist_len = len(history) / 2 # tourist, guide
+
         # tourist part
-        for tup in history[:hist_len]:
+        for tup, weight in zip(history[:hist_len], dist[:hist_len]):
             d = [tup[0]] + [attri for attri in tup[1]]
             temp_tourist_list.append(one_hot(d, 'mix'))
+            temp_guide_dist.append(weight)
         # guide part
-        for tup in history[hist_len:]:
+        for tup, weight in zip(history[hist_len:], dist[hist_len:]):
             d = [tup[0]] + [attri for attri in tup[1]]
             temp_guide_list.append(one_hot(d, 'mix'))
+            temp_tourist_dist.append(weight)
         train_guide.append(temp_guide_list)
         train_tourist.append(temp_tourist_list)
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
+        tourist_dist.append(temp_guide_dist)
+        guide_dist.append(temp_tourist_dist)
 
     for i in batch_nl:
         nl = i[-1]
@@ -112,7 +122,7 @@ def process_intent(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id
             target_l[idx] = 1.0
         train_target.append(target_l)
 
-    return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
+    return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len, tourist_dist, guide_dist
 
 if __name__ == '__main__':
     sess = tf.Session(config=config)
@@ -137,8 +147,8 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(batch_size)
-            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            batch_nl, batch_intent, batch_dist = data.get_train_batch(batch_size)
+            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len, tourist_dist, guide_dist = process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent)
             train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             assert train_target_intent == train_target_nl
             loss_to_minimize = model.loss
@@ -153,7 +163,9 @@ if __name__ == '__main__':
                         model.tourist_len_nl:tourist_len_nl,
                         model.guide_len_nl:guide_len_nl,
                         model.predict_nl_len:nl_len,
-                        model.dropout_keep_prob:0.75
+                        model.dropout_keep_prob:0.75,
+                        model.tourist_dist:tourist_dist,
+                        model.guide_dist:guide_dist
                         })
                 
             total_loss += loss
@@ -174,7 +186,7 @@ if __name__ == '__main__':
         print "training loss:", total_loss
 
         # Test
-        test_batch_nl, test_batch_intent = data.get_test_batch()
+        test_batch_nl, test_batch_intent, test_batch_dist = data.get_test_batch()
         test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         assert test_target_intent == test_target_nl

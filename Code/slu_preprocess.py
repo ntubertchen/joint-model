@@ -11,6 +11,10 @@ class slu_data():
         valid_intent = open('Data/valid/intent', 'r')
         test_intent = open('Data/test/intent', 'r')
         train_talker = open('Data/train/talker', 'r')
+        train_info = open('Data/train/info', 'r')
+        test_info = open('Data/test/info', 'r')
+        self.train_dist = self.read_info(train_info)
+        self.test_dist = self.read_info(test_info)
         self.intent_act_dict = None
         self.intent_attri_dict = None
         self.total_intent = None
@@ -40,6 +44,13 @@ class slu_data():
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
     
+    def read_info(self, data_file):
+        ret_dist = list()
+        for line in data_file:
+            dist = line.split("***next***")[:-1]
+            ret_dist.append(dist)
+        return ret_dist
+
     def get_talker(self, data_file):
         for idx, line in enumerate(data_file):
             talker = line.strip('\n')
@@ -65,12 +76,15 @@ class slu_data():
 
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_dist_batch = list()
         for batch_idx in batch_indices:
             nl_sentences = self.train_data[batch_idx]
             intent = self.train_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            dist = self.train_dist[batch_idx]
+            ret_dist_batch.append(dist)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch
 
     def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
@@ -90,12 +104,15 @@ class slu_data():
         batch_indices = self.test_indices
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_dist_batch = list()
         for batch_idx in batch_indices:
             nl_sentences = self.test_data[batch_idx]
             intent = self.test_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            dist = self.test_dist[batch_idx]
+            ret_dist_batch.append(dist)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch
 
     def convertintent2id(self, data_file):
         intent_corpus = list()

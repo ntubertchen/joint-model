@@ -41,6 +41,8 @@ class slu_model(object):
         self.predict_nl_len = tf.placeholder(tf.int32, [None])
         self.predict_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
         self.dropout_keep_prob = tf.placeholder(tf.float32)
+        self.tourist_dist = tf.placeholder(tf.float32, [None, self.hist_len])
+        self.guide_dist = tf.placeholder(tf.float32, [None, self.hist_len])
 
     def hist_cnn(self, scope, idx):
         with tf.variable_scope(scope):
