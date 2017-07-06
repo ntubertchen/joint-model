@@ -107,8 +107,8 @@ def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_i
         train_guide.append(temp_guide_list)
         train_tourist.append(temp_tourist_list)
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
-        tourist_dist.append(temp_guide_dist)
-        guide_dist.append(temp_tourist_dist)
+        tourist_dist.append(temp_tourist_dist)
+        guide_dist.append(temp_guide_dist)
 
     for i in batch_nl:
         nl = i[-1]
@@ -129,8 +129,8 @@ if __name__ == '__main__':
     max_seq_len = 40
     epoch = 30
     batch_size = 256
-    use_attention = "None"
-    use_mid_loss = False
+    use_attention = "role"
+    use_mid_loss = True
 
     data = slu_data()
     total_intent = data.total_intent
@@ -187,7 +187,7 @@ if __name__ == '__main__':
 
         # Test
         test_batch_nl, test_batch_intent, test_batch_dist = data.get_test_batch()
-        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len = process_intent(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len, test_tourist_dist, test_guide_dist = process_intent(test_batch_nl, test_batch_intent, test_batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent)
         test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
         assert test_target_intent == test_target_nl
         test_output = sess.run(model.intent_output,

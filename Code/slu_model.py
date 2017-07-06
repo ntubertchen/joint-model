@@ -125,12 +125,30 @@ class slu_model(object):
             self.unstack_guide_hist.append(self.hist_cnn('guide', i))
             #self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
             #self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
-        tourist_hist = tf.sigmoid(tf.concat(self.unstack_tourist_hist, axis=1))
-        guide_hist = tf.sigmoid(tf.concat(self.unstack_guide_hist, axis=1))
+        tourist_hist = tf.sigmoid(tf.stack(self.unstack_tourist_hist, axis=1))
+        guide_hist = tf.sigmoid(tf.stack(self.unstack_guide_hist, axis=1))
 
+        with tf.variable_scope("serial_tourist"):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, tourist_hist, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            tourist_output = tf.concat([final_fw, final_bw], axis=1)
+
+        with tf.variable_scope("serial_guide"):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, guide_hist, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            guide_output = tf.concat([final_fw, final_bw], axis=1)
+        
+        # dummy workaround
+        tourist_hist = tourist_output
+        guide_hist = guide_output
         if self.use_attention == "None":
             return tf.concat([tourist_hist, guide_hist], axis=1)
-
         elif self.use_attention == "role":
             with tf.variable_scope("role_attention"):
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
