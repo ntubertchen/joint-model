@@ -52,8 +52,10 @@ class slu_data():
         return ret_dist
 
     def get_talker(self, data_file):
+        self.all_talker = list()
         for idx, line in enumerate(data_file):
             talker = line.strip('\n')
+            self.all_talker.append(talker)
             if talker == 'Tourist':
                 self.train_tourist_indices.append(idx)
             elif talker == 'Guide':
@@ -61,7 +63,6 @@ class slu_data():
             else:
                 print "cannot be here!"
                 exit(1)
-
     def get_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         if role == None:
@@ -77,6 +78,7 @@ class slu_data():
         ret_nl_batch = list()
         ret_intent_batch = list()
         ret_dist_batch = list()
+        ret_talker = list()
         for batch_idx in batch_indices:
             nl_sentences = self.train_data[batch_idx]
             intent = self.train_intent[batch_idx]
@@ -84,7 +86,9 @@ class slu_data():
             ret_intent_batch.append(intent)
             dist = self.train_dist[batch_idx]
             ret_dist_batch.append(dist)
-        return ret_nl_batch, ret_intent_batch, ret_dist_batch
+            talker = self.all_talker[batch_idx]
+            ret_talker.append(talker)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
 
     def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
@@ -105,6 +109,7 @@ class slu_data():
         ret_nl_batch = list()
         ret_intent_batch = list()
         ret_dist_batch = list()
+        ret_talker = list()
         for batch_idx in batch_indices:
             nl_sentences = self.test_data[batch_idx]
             intent = self.test_intent[batch_idx]
@@ -112,7 +117,9 @@ class slu_data():
             ret_intent_batch.append(intent)
             dist = self.test_dist[batch_idx]
             ret_dist_batch.append(dist)
-        return ret_nl_batch, ret_intent_batch, ret_dist_batch
+            talker = self.all_talker[batch_idx]
+            ret_talker.append(talker)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
 
     def convertintent2id(self, data_file):
         intent_corpus = list()
@@ -120,7 +127,10 @@ class slu_data():
             temp_intent = line.strip('\n').split('***next***')[:-1]
             temp_intent = map(lambda x:x.strip(' ').lstrip(' '), temp_intent)
             intent_corpus.append(temp_intent)
-        
+        # post processing
+        for idx, intent in enumerate(intent_corpus[:-1]):
+            intent_corpus[idx] += [intent_corpus[idx+1][-1]]
+        intent_corpus[-1] += [intent_corpus[-1][-1]]
         if self.intent_act_dict is None or self.intent_attri_dict is None:
             assert self.intent_act_dict is None and self.intent_attri_dict is None
             # build intent dict
@@ -179,7 +189,10 @@ class slu_data():
             temp_nl = line.strip('\n').split('***next***')[:-1] # temp_nl contains many sentences
             nl = self.clean_nl(temp_nl)
             nl_corpus.append(nl)
-        
+        # post-processing the nl_corpus
+        for idx, nl in enumerate(nl_corpus[:-1]):
+            nl_corpus[idx] += [nl_corpus[idx+1][-1]]
+        nl_corpus[-1] += [nl_corpus[-1][-1]]
         # start from idx 1, since 0 is for <unk>
         data = list()
         for nl_sentences in nl_corpus:

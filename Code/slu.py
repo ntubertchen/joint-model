@@ -25,7 +25,7 @@ def one_hot(idx, T):
             ret[i] = 1.0
     return ret
 
-def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
+def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent, talker):
     nl_pad_id += 1
     train_tourist = list()
     train_guide = list()
@@ -41,8 +41,9 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
         temp_guide_list = list()
         temp_tourist_len = list()
         temp_guide_len = list()
-        history = i[:-1]
-        hist_len = len(history) / 2 # tourist, guide
+        assert len(i) == 8
+        history = i[:-2]
+        hist_len = 3
         # tourist part
         for nl in history[:hist_len]:
             temp_tourist_list.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
@@ -57,11 +58,11 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
         train_guide.append(temp_guide_list)
         guide_len.append(temp_guide_len)
 
-    for i in batch_intent:
+    for i, t in zip(batch_intent, talker):
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
 
-    for i in batch_nl:
-        nl = i[-1]
+    for i, t in zip(batch_nl, talker):
+        nl = i[-2]
         train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
         nl_len.append(len(nl))
     # one-hot encode train_target
@@ -73,7 +74,7 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
 
     return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
 
-def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_id, nl_pad_id, total_intent):
+def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_id, nl_pad_id, total_intent, talker):
     train_tourist = list()
     train_guide = list()
     train_nl = list()
@@ -85,15 +86,15 @@ def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_i
     guide_len = list()
     nl_len = list()
 
-    for i, j in zip(batch_intent, batch_dist):
+    for i, j, t in zip(batch_intent, batch_dist, talker):
         temp_tourist_list = list()
         temp_guide_list = list()
         temp_guide_dist = list()
         temp_tourist_dist = list()
-        history = i[:-1]
+        assert len(i) == 8
+        history = i[:-2]
         dist = j[:-1]
-        hist_len = len(history) / 2 # tourist, guide
-
+        hist_len = 3
         # tourist part
         for tup, weight in zip(history[:hist_len], dist[:hist_len]):
             d = [tup[0]] + [attri for attri in tup[1]]
@@ -110,8 +111,8 @@ def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_i
         tourist_dist.append(temp_tourist_dist)
         guide_dist.append(temp_guide_dist)
 
-    for i in batch_nl:
-        nl = i[-1]
+    for i, t in zip(batch_nl, talker):
+        nl = i[-2]
         train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
         nl_len.append(len(nl))
 
@@ -127,7 +128,7 @@ def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_i
 if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 40
-    epoch = 30
+    epoch = 60
     batch_size = 256
     use_attention = "role"
     use_mid_loss = True
@@ -147,9 +148,9 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent, batch_dist = data.get_train_batch(batch_size)
-            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len, tourist_dist, guide_dist = process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent)
-            train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            batch_nl, batch_intent, batch_dist, train_talker = data.get_train_batch(batch_size)
+            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len, tourist_dist, guide_dist = process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent, train_talker)
+            train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, train_talker)
             assert train_target_intent == train_target_nl
             loss_to_minimize = model.loss
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, loss_to_minimize],
@@ -186,9 +187,9 @@ if __name__ == '__main__':
         print "training loss:", total_loss
 
         # Test
-        test_batch_nl, test_batch_intent, test_batch_dist = data.get_test_batch()
-        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len, test_tourist_dist, test_guide_dist = process_intent(test_batch_nl, test_batch_intent, test_batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent)
-        test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+        test_batch_nl, test_batch_intent, test_batch_dist, test_talker = data.get_test_batch()
+        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len, test_tourist_dist, test_guide_dist = process_intent(test_batch_nl, test_batch_intent, test_batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent, test_talker)
+        test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, test_talker)
         assert test_target_intent == test_target_nl
         test_output = sess.run(model.intent_output,
                 feed_dict={
@@ -220,11 +221,15 @@ if __name__ == '__main__':
 
 
         # calculate test F1 score
-        test_talker = open('Data/test/talker', 'r')
+        test_talker = open('Data/test/talker', 'r').readlines()
         pred_vec = np.array(list())
         label_vec = np.array(list())
-        for pred, label, talker in zip(test_output, test_target_intent, test_talker):
-            if talker.strip('\n') == 'Guide':
+        talker_cnt = 0
+        for pred, label in zip(test_output, test_target_intent):
+            talker_cnt += 1
+            if len(test_talker) <= talker_cnt:
+                talker_cnt = len(test_talker) - 1
+            if test_talker[talker_cnt].strip('\n') == 'Tourist':
                 continue
             pred_act = pred[:5] # first 5 is act
             pred_attribute = pred[5:] # remaining is attribute
@@ -239,6 +244,5 @@ if __name__ == '__main__':
         f1sc = f1_score(pred_vec, label_vec, average='binary')
         print "testing f1 score:", f1sc
         test_f1_scores.append(f1sc)
-        test_talker.close()
     print "max test f1 score:", max(test_f1_scores)
     sess.close()
