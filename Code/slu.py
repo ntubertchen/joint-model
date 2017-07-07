@@ -35,13 +35,10 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
     tourist_len = list()
     guide_len = list()
     nl_len = list()
-
+    train_tourist_guide = list()
     for i in batch_nl:
         temp_tourist_list = list()
         temp_guide_list = list()
-        temp_tourist_len = list()
-        temp_guide_len = list()
-        assert len(i) == 8
         history = i[:-2]
         hist_len = 3
         # tourist part
@@ -50,21 +47,19 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
             temp_tourist_len.append(len(nl))
         # guide part
         for nl in history[hist_len:]:
-            temp_guide_list.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
-            temp_guide_len.append(len(nl))
+            temp_guide_list += nl
+        final_nl_list = temp_tourist_list + temp_guide_list
+        # pad the sequence
+        train_tourist_guide.append(final_nl_list + [nl_pad_id for i in range(max_seq_len-len(final_nl_list))])
     
-        train_tourist.append(temp_tourist_list)
-        tourist_len.append(temp_tourist_len)
-        train_guide.append(temp_guide_list)
-        guide_len.append(temp_guide_len)
-
-    for i, t in zip(batch_intent, talker):
+    for i in batch_intent:
         target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
 
-    for i, t in zip(batch_nl, talker):
+    for i in batch_nl:
         nl = i[-2]
         train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
         nl_len.append(len(nl))
+
     # one-hot encode train_target
     for i in target_idx:
         target_l = [0.0 for _ in range(total_intent)]
@@ -72,7 +67,7 @@ def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, to
             target_l[idx] = 1.0
         train_target.append(target_l)
 
-    return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len
+    return train_tourist_guide, train_nl, train_target, nl_len
 
 def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_id, nl_pad_id, total_intent, talker):
     train_tourist = list()
@@ -148,12 +143,19 @@ if __name__ == '__main__':
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent, batch_dist, train_talker = data.get_train_batch(batch_size)
-            train_tourist_intent, train_guide_intent, train_nl, train_target_intent, tourist_len_intent, guide_len_intent, nl_len, tourist_dist, guide_dist = process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent, train_talker)
-            train_tourist_nl, train_guide_nl, train_nl, train_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, train_talker)
-            assert train_target_intent == train_target_nl
-            loss_to_minimize = model.loss
-            _, intent_output, loss = sess.run([model.train_op, model.intent_output, loss_to_minimize],
+            batch_nl, batch_intent = data.get_train_batch(batch_size)
+            train_intent = None
+            train_nl = None
+            if use_intent == True:
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            else:
+                train_tourist_guide, train_nl, train_target, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            # add nl_indices to gather_nd of bi-rnn output
+            nl_indices = list()
+            for idx, indices in enumerate(nl_len):
+                nl_indices.append([idx, indices])
+
+            _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
                         model.tourist_input_intent:train_tourist_intent,
                         model.guide_input_intent:train_guide_intent,
