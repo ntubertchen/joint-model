@@ -112,7 +112,7 @@ def one_hot(idx, T):
 if __name__ == '__main__':
     sess = tf.Session(config=config)
     data = slu_data()
-    max_seq_len = 50
+    max_seq_len = 40
     epoch = 30
     use_intent = False # True: use intent tag as input, False: use nl as input, however, this not important in slu_no_hist
     total_intent = data.total_intent
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         print "f1 score is:", f1_score(pred_outputs, train_targets, average='binary')
         print "loss is:", total_loss
         print "cur_epoch is:", cur_epoch
-	if cur_epoch == 10:
+	if cur_epoch == 20:
             # print training result for Chen
             pred_outputs = list()
             train_targets = list()
@@ -186,13 +186,12 @@ if __name__ == '__main__':
                 pred_outputs.append(np.append(act_logit, attribute_logit))
             ans = list()
             f_out = open('out.txt', 'w')
+
             for t in pred_outputs:
                 s = ''
-                for idx, tag in enumerate(t):
-                    if tag == 1.0:
-                        s = s + (data.whole_dict[idx]) + '-'
-                f_out.write(s.strip('-')+'\n')
-                ans.append(s)
+                for tag in t:
+                    s += str(tag) + ' '
+                f_out.write(s.strip(' ')+'\n')
             f_out.close()
         # Test
         test_nl, test_intent = data.get_test_batch()
@@ -210,9 +209,10 @@ if __name__ == '__main__':
         # calculate test F1 score
         pred_vec = np.array(list())
         label_vec = np.array(list())
+        output_test = list()
         for pred, label, talker in zip(test_output, test_target, f):
-            if talker.strip('\n') == 'Guide':
-                continue
+            #if talker.strip('\n') == 'Guide':
+            #    continue
             pred_act = pred[:5] # first 5 is act
             pred_attribute = pred[5:] # remaining is attribute
             binary = Binarizer(threshold=0.5)
@@ -227,14 +227,13 @@ if __name__ == '__main__':
         f1sc = f1_score(pred_vec, label_vec, average='binary')
         print "test f1 score is:", f1sc
         test_f1_scores.append(f1sc)
-	if cur_epoch == 10:
+	if cur_epoch == 20:
             f_out_test = open('out_test.txt', 'w')
             for t in output_test:
                 s = ''
-                for idx, tag in enumerate(t):
-                    if tag == 1.0:
-                        s = s + (data.whole_dict[idx]) + '-'
-                f_out_test.write(s.strip('-')+'\n')
+                for tag in t:
+                    s += str(tag) + ' '
+                f_out_test.write(s.strip(' ')+'\n')
             f_out_test.close()
     print "max test f1 score is:", max(test_f1_scores)
     sess.close()

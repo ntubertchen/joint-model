@@ -9,6 +9,8 @@ class slu_model(object):
         self.embedding_dim = 200 # read from glove
         self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
+        self.filter_sizes = [5,6,7]
+        self.filter_depth = 200
         self.add_variables()
         self.add_placeholders()
         self.add_variables()
@@ -35,7 +37,6 @@ class slu_model(object):
         self.nl_indices = tf.placeholder(tf.int32, [None, 2])
 
     def nl_biRNN(self):
-	
         with tf.variable_scope("nl"):
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size, forget_bias=1.0)
@@ -45,6 +46,19 @@ class slu_model(object):
             bw_outputs = tf.gather_nd(outputs[1], self.nl_indices)
             outputs = tf.concat([fw_outputs, bw_outputs], axis=1) # concatenate forward and backward final states
             return outputs
+    def nl_cnn(self):
+        with tf.variable_scope("nl_cnn"):
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.input_nl)
+            pooled_outputs = list()
+            for idx, filter_size in enumerate(self.filter_sizes):
+                h = tf.layers.conv1d(inputs, self.filter_depth, filter_size, activation=tf.nn.relu, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+                pooled = tf.layers.max_pooling1d(h, self.max_seq_len-filter_size+1, 1)
+                pooled_outputs.append(pooled)
+            num_filters_total = self.filter_depth * len(self.filter_sizes)
+            h_pool_flat = tf.squeeze(tf.concat(pooled_outputs, axis=2), axis=1)
+            h_drop = tf.nn.dropout(h_pool_flat, 0.75)
+            dense_h = tf.layers.dense(inputs=h_drop, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+            return dense_h
 
     def build_graph(self):
         #outputs = self.nl_biRNN()

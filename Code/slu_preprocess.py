@@ -38,6 +38,17 @@ class slu_data():
         #self.get_valid_batch()
         #self.get_test_batch()
 
+    def get_all_train(self):
+        indices = [i for i in range(len(self.train_data))]
+        ret_nl_batch = list()
+        ret_intent_batch = list()
+        for batch_idx in indices:
+            nl_sentences = self.train_data[batch_idx]
+            intent = self.train_intent[batch_idx]
+            ret_nl_batch.append(nl_sentences)
+            ret_intent_batch.append(intent)
+        return ret_nl_batch, ret_intent_batch
+
     def get_train_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.train_batch_indices)
