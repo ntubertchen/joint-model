@@ -137,16 +137,11 @@ if __name__ == '__main__':
                 train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
             else:
                 train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-            # add nl_indices to gather_nd of bi-rnn output
-            nl_indices = list()
-            for idx, indices in enumerate(nl_len):
-                nl_indices.append([idx, indices])
 
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
                         model.input_nl:train_nl,
                         model.labels:train_target,
-                        model.nl_indices:nl_indices
                         })
             total_loss += loss
             for pred, label in zip(intent_output, train_target):
@@ -165,7 +160,40 @@ if __name__ == '__main__':
         print "f1 score is:", f1_score(pred_outputs, train_targets, average='binary')
         print "loss is:", total_loss
         print "cur_epoch is:", cur_epoch
-
+	if cur_epoch == 10:
+            # print training result for Chen
+            pred_outputs = list()
+            train_targets = list()
+            batch_nl, batch_intent = data.get_all_train()
+            if use_intent == True:
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            else:
+                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
+            intent_output = sess.run(model.intent_output,
+                    feed_dict={
+                        model.input_nl:train_nl,
+                        model.labels:train_target,
+                        })
+            for pred, label in zip(intent_output, train_target):
+                pred_act = pred[:5] # first 5 is act
+                pred_attribute = pred[5:] # remaining is attribute
+                binary = Binarizer(threshold=0.5)
+                act_logit = one_hot(np.argmax(pred_act), 'act')
+                attribute_logit = binary.fit_transform([pred_attribute])
+                if np.sum(attribute_logit) == 0:
+                    attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
+                label = binary.fit_transform([label])
+                pred_outputs.append(np.append(act_logit, attribute_logit))
+            ans = list()
+            f_out = open('out.txt', 'w')
+            for t in pred_outputs:
+                s = ''
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + (data.whole_dict[idx]) + '-'
+                f_out.write(s.strip('-')+'\n')
+                ans.append(s)
+            f_out.close()
         # Test
         test_nl, test_intent = data.get_test_batch()
         if use_intent == True:
@@ -173,15 +201,10 @@ if __name__ == '__main__':
         else:
             test_tourist, test_guide, test_nl, test_target, tourist_len, guide_len, nl_len = process_nl(test_nl, test_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
 
-        # add nl_indices to gather_nd of bi-rnn output
-        nl_indices = list()
-        for idx, indices in enumerate(nl_len):
-            nl_indices.append([idx, indices])
         test_output = sess.run(model.intent_output,
                 feed_dict={
                     model.input_nl:test_nl,
                     model.labels:test_target,
-                    model.nl_indices:nl_indices
                     })
         f = open('Data/test/talker', 'r')
         # calculate test F1 score
@@ -199,9 +222,19 @@ if __name__ == '__main__':
                 attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
             label = binary.fit_transform([label])
             pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
+	    output_test.append(np.append(act_logit, attribute_logit))
             label_vec = np.append(label_vec, label)
         f1sc = f1_score(pred_vec, label_vec, average='binary')
         print "test f1 score is:", f1sc
         test_f1_scores.append(f1sc)
+	if cur_epoch == 10:
+            f_out_test = open('out_test.txt', 'w')
+            for t in output_test:
+                s = ''
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + (data.whole_dict[idx]) + '-'
+                f_out_test.write(s.strip('-')+'\n')
+            f_out_test.close()
     print "max test f1 score is:", max(test_f1_scores)
     sess.close()

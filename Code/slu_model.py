@@ -7,7 +7,7 @@ class slu_model(object):
         self.hidden_size = 128
         self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
-        self.total_word = 400001 # total word embedding vectors
+        self.total_word = 400002 # total word embedding vectors
         self.max_seq_len = max_seq_len
         self.add_variables()
         self.add_placeholders()
@@ -47,7 +47,8 @@ class slu_model(object):
             return outputs
 
     def build_graph(self):
-        outputs = self.nl_biRNN()
+        #outputs = self.nl_biRNN()
+        outputs = self.nl_cnn()
         self.intent_output = tf.layers.dense(inputs=outputs, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
