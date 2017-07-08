@@ -160,7 +160,7 @@ if __name__ == '__main__':
         print "f1 score is:", f1_score(pred_outputs, train_targets, average='binary')
         print "loss is:", total_loss
         print "cur_epoch is:", cur_epoch
-	if cur_epoch == 20:
+	if cur_epoch == 25:
             # print training result for Chen
             pred_outputs = list()
             train_targets = list()
@@ -189,9 +189,10 @@ if __name__ == '__main__':
 
             for t in pred_outputs:
                 s = ''
-                for tag in t:
-                    s += str(tag) + ' '
-                f_out.write(s.strip(' ')+'\n')
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + data.whole_dict[idx] + '-'
+                f_out.write(s.strip('-')+'\n')
             f_out.close()
         # Test
         test_nl, test_intent = data.get_test_batch()
@@ -227,13 +228,14 @@ if __name__ == '__main__':
         f1sc = f1_score(pred_vec, label_vec, average='binary')
         print "test f1 score is:", f1sc
         test_f1_scores.append(f1sc)
-	if cur_epoch == 20:
+	if cur_epoch == 25:
             f_out_test = open('out_test.txt', 'w')
             for t in output_test:
                 s = ''
-                for tag in t:
-                    s += str(tag) + ' '
-                f_out_test.write(s.strip(' ')+'\n')
+                for idx, tag in enumerate(t):
+                    if tag == 1.0:
+                        s = s + data.whole_dict[idx] + '-'
+                f_out_test.write(s.strip('-')+'\n')
             f_out_test.close()
     print "max test f1 score is:", max(test_f1_scores)
     sess.close()

@@ -112,6 +112,12 @@ class slu_data():
             self.intent_act_dict = act_dict
             self.intent_attri_dict = attri_dict
             self.total_intent = len(act_dict)+len(attri_dict)
+            # construct whole dict for reconstructing intent output
+            self.whole_dict = defaultdict()
+            for k, v in act_dict.iteritems():
+                self.whole_dict[v] = k
+            for k, v in attri_dict.iteritems():
+                self.whole_dict[v+len(act_dict)] = k
         
         # convert act and attributes to id
         ret_intent = list()
