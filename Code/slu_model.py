@@ -30,31 +30,23 @@ class slu_model(object):
         self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, name="glove_embedding")
 
     def add_placeholders(self):
-        self.tourist_input_intent = tf.placeholder(tf.float32, [None, self.hist_len, self.intent_dim])
-        self.guide_input_intent = tf.placeholder(tf.float32, [None, self.hist_len, self.intent_dim])
         self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
         self.labels = tf.placeholder(tf.float32, [None, self.intent_dim])
-        self.tourist_input_nl = tf.placeholder(tf.int32, [None, self.hist_len, self.max_seq_len])
-        self.guide_input_nl = tf.placeholder(tf.int32, [None, self.hist_len, self.max_seq_len])
-        self.tourist_len_nl = tf.placeholder(tf.int32, [None, self.hist_len])
-        self.guide_len_nl = tf.placeholder(tf.int32, [None, self.hist_len])
-        self.predict_nl_len = tf.placeholder(tf.int32, [None])
-        self.predict_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
+        self.history_nl = tf.placeholder(tf.int32, [None, self.hist_len*2, self.max_seq_len])
+        self.current_nl_len = tf.placeholder(tf.int32, [None])
+        self.current_nl = tf.placeholder(tf.int32, [None, self.max_seq_len])
         self.dropout_keep_prob = tf.placeholder(tf.float32)
-        self.tourist_dist = tf.placeholder(tf.float32, [None, self.hist_len])
-        self.guide_dist = tf.placeholder(tf.float32, [None, self.hist_len])
+        self.history_intent = tf.placeholder(tf.float32, [None, self.hist_len*2, self.intent_dim])
 
     def hist_cnn(self, scope, idx):
         with tf.variable_scope(scope):
             if idx != 0:
                 tf.get_variable_scope().reuse_variables()
-            if idx < 3:
-                # tourist_input_nl should now have [batch_size, 3, max_seq_len]
-                tourist_input_nl = tf.unstack(self.tourist_input_nl, axis=1)[idx]
-                inputs = tf.nn.embedding_lookup(self.embedding_matrix, tourist_input_nl)
-            elif idx >= 3:
-                guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx-3]
-                inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
+            if scope == "CNN_t":
+                input_nl = tf.unstack(self.history_nl, axis=1)[idx]
+            elif scope == "CNN_g":
+                input_nl = tf.unstack(self.history_nl, axis=1)[idx+self.hist_len]
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, input_nl)
             pooled_outputs = list()
             for idx, filter_size in enumerate(self.filter_sizes):
                 # convolution layer
@@ -95,13 +87,13 @@ class slu_model(object):
 
     def nl_biRNN(self, history_summary):
         with tf.variable_scope("nl"):
-            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.current_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
             history_summary = tf.expand_dims(history_summary, axis=1)
             replicate_summary = tf.tile(history_summary, [1, self.max_seq_len, 1]) # [batch_size, self.max_seq_len, self.intent_dim]
             concat_input = tf.concat([inputs, replicate_summary], axis=2) # [batch_size, self.max_seq_len, self.intent_dim+self.embedding_dim]
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, sequence_length=self.predict_nl_len, dtype=tf.float32)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, concat_input, sequence_length=self.current_nl_len, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
@@ -118,19 +110,31 @@ class slu_model(object):
             return outputs
 
     def attention(self):
-        self.unstack_hist = list()
-        for i in range(self.hist_len*2):
-            self.unstack_hist.append(self.hist_cnn('CNN', i))
-        serial_hist = tf.sigmoid(tf.stack(self.unstack_hist, axis=1))
+        self.unstack_hist_tourist = list()
+        self.unstack_hist_guide = list()
+        for i in range(self.hist_len):
+            self.unstack_hist_tourist.append(self.hist_cnn('CNN_t', i))
+            self.unstack_hist_guide.append(self.hist_cnn('CNN_g', i))
 
-        with tf.variable_scope("serial"):
+        serial_hist_tourist = tf.sigmoid(tf.stack(self.unstack_hist_tourist, axis=1))
+        serial_hist_guide = tf.sigmoid(tf.stack(self.unstack_hist_guide, axis=1))
+
+        with tf.variable_scope("serial_tourist"):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, serial_hist, dtype=tf.float32)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, serial_hist_tourist, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
-            output = tf.concat([final_fw, final_bw], axis=1)
-            return output
+            tourist_output = tf.concat([final_fw, final_bw], axis=1)
+
+        with tf.variable_scope("serial_guide"):
+            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, serial_hist_guide, dtype=tf.float32)
+            final_fw = tf.concat(final_states[0], axis=1)
+            final_bw = tf.concat(final_states[1], axis=1)
+            guide_output = tf.concat([final_fw, final_bw], axis=1)
+        return tf.concat([tourist_output, guide_output], axis=1)
         
         # dummy workaround
         tourist_hist = tourist_output
@@ -139,10 +143,10 @@ class slu_model(object):
             return tf.concat([tourist_hist, guide_hist], axis=1)
         elif self.use_attention == "role":
             with tf.variable_scope("role_attention"):
-                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.current_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
                 lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
                 lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.predict_nl_len, dtype=tf.float32)
+                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.current_nl_len, dtype=tf.float32)
                 final_fw = tf.concat(final_states[0], axis=1)
                 final_bw = tf.concat(final_states[1], axis=1)
                 cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
@@ -153,10 +157,10 @@ class slu_model(object):
 
         elif self.use_attention == "sentence":
             with tf.variable_scope("sentence_attention"):
-                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.predict_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
+                inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.current_nl) # [batch_size, self.max_seq_len, self.embedding_dim]
                 lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
                 lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.predict_nl_len, dtype=tf.float32)
+                _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, sequence_length=self.current_nl_len, dtype=tf.float32)
                 final_fw = tf.concat(final_states[0], axis=1)
                 final_bw = tf.concat(final_states[1], axis=1)
                 cur_rnn_outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
@@ -187,18 +191,12 @@ class slu_model(object):
 
     def add_loss(self):
         loss_ce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
-        self.loss = loss_ce
-        '''
-        stack_tourist_hist = tf.stack(self.unstack_tourist_hist, axis=1)
-        stack_guide_hist = tf.stack(self.unstack_guide_hist, axis=1)
-        loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_hist))
-        loss_intent_guide = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.guide_input_intent, logits=stack_guide_hist))
+        loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.split(self.history_intent, num_or_size_splits=2, axis=1)[0], logits=tf.stack(self.unstack_hist_tourist, axis=1)))
+        loss_intent_guide = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.split(self.history_intent, num_or_size_splits=2, axis=1)[1], logits=tf.stack(self.unstack_hist_guide, axis=1)))
         if self.use_mid_loss == True:
             self.loss = loss_ce + loss_intent_tourist + loss_intent_guide
         else:
             self.loss = loss_ce
-        self.first_loss = loss_intent_tourist + loss_intent_guide
-        '''
         
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)

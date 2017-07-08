@@ -47,7 +47,7 @@ class slu_data():
     def read_info(self, data_file):
         ret_dist = list()
         for line in data_file:
-            dist = line.split("***next***")[:-1]
+            dist = map(lambda x:float(x.strip(' ').lstrip(' ')), line.split("***next***")[:-1])
             ret_dist.append(dist)
         return ret_dist
 
@@ -63,6 +63,7 @@ class slu_data():
             else:
                 print "cannot be here!"
                 exit(1)
+
     def get_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         if role == None:
@@ -88,10 +89,9 @@ class slu_data():
             ret_dist_batch.append(dist)
             talker = self.all_talker[batch_idx]
             ret_talker.append(talker)
-        return ret_nl_batch, ret_intent_batch
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
 
     def get_valid_batch(self, batch_size):
-        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.valid_batch_indices)
         batch_indices = self.valid_batch_indices[:batch_size]
         ret_nl_batch = list()
@@ -104,7 +104,6 @@ class slu_data():
         return ret_nl_batch, ret_intent_batch
 
     def get_test_batch(self):
-        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         batch_indices = self.test_indices
         ret_nl_batch = list()
         ret_intent_batch = list()

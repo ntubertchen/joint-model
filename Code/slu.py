@@ -1,9 +1,7 @@
 import tensorflow as tf
-from tensorflow.python.platform import flags
 import numpy as np
 from slu_preprocess import slu_data
 from slu_model import slu_model
-import argparse
 import random
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import Binarizer
@@ -25,105 +23,89 @@ def one_hot(idx, T):
             ret[i] = 1.0
     return ret
 
-def process_nl(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent, talker):
+def process_batch(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id, total_intent, batch_talker, batch_distance):
     nl_pad_id += 1
-    train_tourist = list()
-    train_guide = list()
-    train_nl = list()
-    train_target = list()
-    target_idx = list()
-    tourist_len = list()
-    guide_len = list()
-    nl_len = list()
-    train_tourist_guide = list()
+    hist_len = 3
+    current_nl = list()
+    current_nl_len = list()
+    ground_truth = list()
+    history_nl = list()
+    history_nl_len = list()
+    history_intent = list()
+    history_distance = list()
+
+    #history nl part
     for i in batch_nl:
-        temp_tourist_list = list()
-        temp_guide_list = list()
+        temp_nl = list() # following the format t t t, g g g
+        temp_nl_len = list()
+        assert len(i) == hist_len * 2 + 2
         history = i[:-2]
-        hist_len = 3
-        # tourist part
-        for nl in history[:hist_len]:
-            temp_tourist_list.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
-            temp_tourist_len.append(len(nl))
-        # guide part
-        for nl in history[hist_len:]:
-            temp_guide_list += nl
-        final_nl_list = temp_tourist_list + temp_guide_list
-        # pad the sequence
-        train_tourist_guide.append(final_nl_list + [nl_pad_id for i in range(max_seq_len-len(final_nl_list))])
-    
+        for nl in history:
+            temp_nl.append(nl+[nl_pad_id for _ in range(max_seq_len-len(nl))])
+            temp_nl_len.append(len(nl))
+        history_nl.append(temp_nl)
+        history_nl_len.append(temp_nl_len)
+
+    # target part
     for i in batch_intent:
-        target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
+        ground_truth.append(one_hot([i[-1][0]]+[attri for attri in i[-1][1]], "mix"))
 
-    for i in batch_nl:
-        nl = i[-2]
-        train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
-        nl_len.append(len(nl))
+    # current nl part
+    for i, t in zip(batch_nl, batch_talker):
+        if t == "Tourist":
+            nl = i[hist_len*2-1]
+        elif t == "Guide":
+            nl = i[hist_len-1]
+        else:
+            print (t)
+            print ("no such role!")
+            exit(1)
+        current_nl.append(nl+[nl_pad_id for _ in range(max_seq_len-len(nl))])
+        current_nl_len.append(len(nl))
 
-    # one-hot encode train_target
-    for i in target_idx:
-        target_l = [0.0 for _ in range(total_intent)]
-        for idx in i:
-            target_l[idx] = 1.0
-        train_target.append(target_l)
-
-    return train_tourist_guide, train_nl, train_target, nl_len
-
-def process_intent(batch_nl, batch_intent, batch_dist, max_seq_len, intent_pad_id, nl_pad_id, total_intent, talker):
-    train_tourist = list()
-    train_guide = list()
-    train_nl = list()
-    tourist_dist = list()
-    guide_dist = list()
-    train_target = list()
-    target_idx = list()
-    tourist_len = list()
-    guide_len = list()
-    nl_len = list()
-
-    for i, j, t in zip(batch_intent, batch_dist, talker):
-        temp_tourist_list = list()
-        temp_guide_list = list()
-        temp_guide_dist = list()
-        temp_tourist_dist = list()
-        assert len(i) == 8
+    # intent part
+    for i, t in zip(batch_intent, batch_talker):
+        temp_history = list() # following the format t t t, g g g
+        assert len(i) == hist_len * 2 + 2
         history = i[:-2]
-        dist = j[:-1]
-        hist_len = 3
-        # tourist part
-        for tup, weight in zip(history[:hist_len], dist[:hist_len]):
+        for tup in history:
             d = [tup[0]] + [attri for attri in tup[1]]
-            temp_tourist_list.append(one_hot(d, 'mix'))
-            temp_guide_dist.append(weight)
-        # guide part
-        for tup, weight in zip(history[hist_len:], dist[hist_len:]):
-            d = [tup[0]] + [attri for attri in tup[1]]
-            temp_guide_list.append(one_hot(d, 'mix'))
-            temp_tourist_dist.append(weight)
-        train_guide.append(temp_guide_list)
-        train_tourist.append(temp_tourist_list)
-        target_idx.append([i[-1][0]]+[attri for attri in i[-1][1]])
-        tourist_dist.append(temp_tourist_dist)
-        guide_dist.append(temp_guide_dist)
+            temp_history.append(one_hot(d, "mix"))
+        history_intent.append(temp_history)
 
-    for i, t in zip(batch_nl, talker):
-        nl = i[-2]
-        train_nl.append(nl+[nl_pad_id for _ in range(max_seq_len - len(nl))])
-        nl_len.append(len(nl))
+    # history distance part, used for distance attention
+    for i in batch_distance:
+        history_distance.append(i[:-1])
 
-    # one-hot encode train_target
-    for i in target_idx:
-        target_l = [0.0 for _ in range(total_intent)]
-        for idx in i:
-            target_l[idx] = 1.0
-        train_target.append(target_l)
+    return history_nl, history_nl_len, current_nl, current_nl_len, history_intent, ground_truth, history_distance
 
-    return train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len, tourist_dist, guide_dist
+def calculate_score(predict_output, ground_truth, talker=None):
+    test_talker = open('Data/test/talker', 'r').readlines()
+    ret_pred_outputs = list()
+    ret_ground_truth = list()
+    talker_cnt = 0
+    for pred, label in zip(predict_output, ground_truth):
+        talker_cnt += 1
+        if len(test_talker) <= talker_cnt:
+            talker_cnt = len(test_talker) - 1
+        if test_talker[talker_cnt].strip('\n') == talker:
+            continue
+        pred_act = pred[:5] # first 5 is act
+        pred_attribute = pred[5:] # remaining is attribute
+        binary = Binarizer(threshold=0.5)
+        act_logit = one_hot(np.argmax(pred_act), "act")
+        attribute_logit = binary.fit_transform([pred_attribute])
+        if np.sum(attribute_logit) == 0:
+            attribute_logit = one_hot(np.argmax(pred_attribute), "attribute")
+        label = binary.fit_transform([label])
+        ret_pred_outputs = np.append(ret_pred_outputs, np.append(act_logit, attribute_logit))
+        ret_ground_truth = np.append(ret_ground_truth, label)
+    return ret_pred_outputs, ret_ground_truth
 
 if __name__ == '__main__':
     sess = tf.Session(config=config)
-    max_seq_len = 40
-    epoch = 60
+    max_seq_len = 60
+    epoch = 30
     batch_size = 256
     use_attention = "role"
     use_mid_loss = False
@@ -139,112 +121,58 @@ if __name__ == '__main__':
     # Train
     for cur_epoch in range(epoch):
         pred_outputs = list()
-        train_targets = list()
+        labels = list()
         total_loss = 0.0
         for cnt in range(50):
             # get the data
-            batch_nl, batch_intent = data.get_train_batch(batch_size)
-            train_intent = None
-            train_nl = None
-            if use_intent == True:
-                train_tourist, train_guide, train_nl, train_target, tourist_len, guide_len, nl_len = process_intent(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-            else:
-                train_tourist_guide, train_nl, train_target, nl_len = process_nl(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent)
-            # add nl_indices to gather_nd of bi-rnn output
-            nl_indices = list()
-            for idx, indices in enumerate(nl_len):
-                nl_indices.append([idx, indices])
+            batch_nl, batch_intent, batch_distance, batch_talker = data.get_train_batch(batch_size)
+
+            history_nl, history_nl_len, current_nl, current_nl_len, history_intent, ground_truth, history_distance = \
+            process_batch(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, batch_talker, batch_distance)
 
             _, intent_output, loss = sess.run([model.train_op, model.intent_output, model.loss],
                     feed_dict={
-                        model.tourist_input_intent:train_tourist_intent,
-                        model.guide_input_intent:train_guide_intent,
-                        model.labels:train_target_intent,
-                        model.tourist_input_nl:train_tourist_nl,
-                        model.guide_input_nl:train_guide_nl,
-                        model.predict_nl:train_nl,
-                        model.tourist_len_nl:tourist_len_nl,
-                        model.guide_len_nl:guide_len_nl,
-                        model.predict_nl_len:nl_len,
+                        model.labels:ground_truth,
+                        model.history_nl:history_nl,
+                        model.current_nl:current_nl,
+                        model.current_nl_len:current_nl_len,
+                        model.history_intent:history_intent,
                         model.dropout_keep_prob:0.75,
-                        model.tourist_dist:tourist_dist,
-                        model.guide_dist:guide_dist
                         })
                 
             total_loss += loss
-            for pred, label in zip(intent_output, train_target_intent):
-                pred_act = pred[:5] # first 5 is act
-                pred_attribute = pred[5:] # remaining is attribute
-                binary = Binarizer(threshold=0.5)
-                act_logit = one_hot(np.argmax(pred_act), 'act')
-                attribute_logit = binary.fit_transform([pred_attribute])
-                if np.sum(attribute_logit) == 0:
-                    attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
-                label = binary.fit_transform([label])
-                pred_outputs = np.append(pred_outputs, np.append(act_logit, attribute_logit))
-                train_targets = np.append(train_targets, label)
-        # calculate batch F1 score
-        print "Epoch:", cur_epoch
-        print "f1 score:", f1_score(pred_outputs, train_targets, average='binary')
-        print "training loss:", total_loss
+            pred, truth = calculate_score(intent_output, ground_truth)
+            pred_outputs = np.append(pred_outputs, pred)
+            labels = np.append(labels, truth)
 
+        print "Epoch:", cur_epoch
+        print "training f1 score:", f1_score(pred_outputs, labels, average="binary")
+        print "training loss:", total_loss
+        
         # Test
-        test_batch_nl, test_batch_intent, test_batch_dist, test_talker = data.get_test_batch()
-        test_tourist_intent, test_guide_intent, test_nl, test_target_intent, tourist_len_intent, guide_len_intent, nl_len, test_tourist_dist, test_guide_dist = process_intent(test_batch_nl, test_batch_intent, test_batch_dist, max_seq_len, total_intent-1, total_word-1, total_intent, test_talker)
-        test_tourist_nl, test_guide_nl, test_nl, test_target_nl, tourist_len_nl, guide_len_nl, nl_len = process_nl(test_batch_nl, test_batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, test_talker)
-        assert test_target_intent == test_target_nl
-        test_output = sess.run(model.intent_output,
+        batch_nl, batch_intent, batch_distance, batch_talker = data.get_test_batch()
+        history_nl, history_nl_len, current_nl, current_nl_len, history_intent, ground_truth, history_distance = \
+        process_batch(batch_nl, batch_intent, max_seq_len, total_intent-1, total_word-1, total_intent, batch_talker, batch_distance)
+        # need to avoid OOM, so test only a batch one time
+        test_output = None
+        for i in range(0, len(batch_nl), batch_size):
+            temp_test_output = sess.run(model.intent_output,
                 feed_dict={
-                    #model.tourist_input_intent:test_tourist_intent[:5000],
-                    #model.guide_input_intent:test_guide_intent[:5000],
-                    model.labels:test_target_intent[:5000],
-                    model.tourist_input_nl:test_tourist_nl[:5000],
-                    model.guide_input_nl:test_guide_nl[:5000],
-                    model.predict_nl:test_nl[:5000],
-                    model.tourist_len_nl:tourist_len_nl[:5000],
-                    model.guide_len_nl:guide_len_nl[:5000],
-                    model.predict_nl_len:nl_len[:5000],
+                    model.labels:ground_truth[i:i+batch_size],
+                    model.history_nl:history_nl[i:i+batch_size],
+                    model.current_nl:current_nl[i:i+batch_size],
+                    model.current_nl_len:current_nl_len[i:i+batch_size],
                     model.dropout_keep_prob:1.0
                     })
+            if i == 0:
+                test_output = temp_test_output
+            else:
+                test_output = np.vstack((test_output, temp_test_output))
         
-        test_output = np.concatenate((test_output, sess.run(model.intent_output,
-                feed_dict={
-                    #model.tourist_input_intent:test_tourist_intent[5000:],
-                    #model.guide_input_intent:test_guide_intent[5000:],
-                    model.labels:test_target_intent[5000:],
-                    model.tourist_input_nl:test_tourist_nl[5000:],
-                    model.guide_input_nl:test_guide_nl[5000:],
-                    model.predict_nl:test_nl[5000:],
-                    model.tourist_len_nl:tourist_len_nl[5000:],
-                    model.guide_len_nl:guide_len_nl[5000:],
-                    model.predict_nl_len:nl_len[5000:],
-                    model.dropout_keep_prob:1.0
-                    })), axis=0)
-
-
-        # calculate test F1 score
-        test_talker = open('Data/test/talker', 'r').readlines()
-        pred_vec = np.array(list())
-        label_vec = np.array(list())
-        talker_cnt = 0
-        for pred, label in zip(test_output, test_target_intent):
-            talker_cnt += 1
-            if len(test_talker) <= talker_cnt:
-                talker_cnt = len(test_talker) - 1
-            if test_talker[talker_cnt].strip('\n') == 'Tourist':
-                continue
-            pred_act = pred[:5] # first 5 is act
-            pred_attribute = pred[5:] # remaining is attribute
-            binary = Binarizer(threshold=0.5)
-            act_logit = one_hot(np.argmax(pred_act), 'act')
-            attribute_logit = binary.fit_transform([pred_attribute])
-            if np.sum(attribute_logit) == 0:
-                attribute_logit = one_hot(np.argmax(pred_attribute), 'attribute')
-            label = binary.fit_transform([label])
-            pred_vec = np.append(pred_vec, np.append(act_logit, attribute_logit))
-            label_vec = np.append(label_vec, label)
-        f1sc = f1_score(pred_vec, label_vec, average='binary')
+        test_pred, test_label = calculate_score(test_output, ground_truth, "Tourist")
+        f1sc = f1_score(test_pred, test_label, average="binary")
         print "testing f1 score:", f1sc
         test_f1_scores.append(f1sc)
+        
     print "max test f1 score:", max(test_f1_scores)
     sess.close()
