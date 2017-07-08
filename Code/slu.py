@@ -126,7 +126,7 @@ if __name__ == '__main__':
     epoch = 60
     batch_size = 256
     use_attention = "role"
-    use_mid_loss = True
+    use_mid_loss = False
 
     data = slu_data()
     total_intent = data.total_intent

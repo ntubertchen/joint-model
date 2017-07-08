@@ -53,7 +53,7 @@ class slu_model(object):
                 tourist_input_nl = tf.unstack(self.tourist_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, tourist_input_nl)
             elif idx >= 3:
-                guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx]
+                guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx-3]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
             pooled_outputs = list()
             for idx, filter_size in enumerate(self.filter_sizes):
@@ -131,7 +131,6 @@ class slu_model(object):
             final_bw = tf.concat(final_states[1], axis=1)
             output = tf.concat([final_fw, final_bw], axis=1)
             return output
-
         
         # dummy workaround
         tourist_hist = tourist_output
@@ -188,6 +187,8 @@ class slu_model(object):
 
     def add_loss(self):
         loss_ce = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
+        self.loss = loss_ce
+        '''
         stack_tourist_hist = tf.stack(self.unstack_tourist_hist, axis=1)
         stack_guide_hist = tf.stack(self.unstack_guide_hist, axis=1)
         loss_intent_tourist = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.tourist_input_intent, logits=stack_tourist_hist))
@@ -197,6 +198,7 @@ class slu_model(object):
         else:
             self.loss = loss_ce
         self.first_loss = loss_intent_tourist + loss_intent_guide
+        '''
         
     def add_train_op(self):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)

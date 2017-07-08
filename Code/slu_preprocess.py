@@ -88,7 +88,7 @@ class slu_data():
             ret_dist_batch.append(dist)
             talker = self.all_talker[batch_idx]
             ret_talker.append(talker)
-        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
+        return ret_nl_batch, ret_intent_batch
 
     def get_valid_batch(self, batch_size):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
