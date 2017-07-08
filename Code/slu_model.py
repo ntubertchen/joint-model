@@ -48,11 +48,11 @@ class slu_model(object):
         with tf.variable_scope(scope):
             if idx != 0:
                 tf.get_variable_scope().reuse_variables()
-            if scope == 'tourist':
+            if idx < 3:
                 # tourist_input_nl should now have [batch_size, 3, max_seq_len]
                 tourist_input_nl = tf.unstack(self.tourist_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, tourist_input_nl)
-            elif scope == 'guide':
+            elif idx >= 3:
                 guide_input_nl = tf.unstack(self.guide_input_nl, axis=1)[idx]
                 inputs = tf.nn.embedding_lookup(self.embedding_matrix, guide_input_nl)
             pooled_outputs = list()
@@ -118,31 +118,20 @@ class slu_model(object):
             return outputs
 
     def attention(self):
-        self.unstack_tourist_hist = list()
-        self.unstack_guide_hist = list()
-        for i in range(self.hist_len):
-            self.unstack_tourist_hist.append(self.hist_cnn('tourist', i))
-            self.unstack_guide_hist.append(self.hist_cnn('guide', i))
-            #self.unstack_tourist_hist.append(self.hist_biRNN('tourist', i))
-            #self.unstack_guide_hist.append(self.hist_biRNN('guide', i))
-        tourist_hist = tf.sigmoid(tf.stack(self.unstack_tourist_hist, axis=1))
-        guide_hist = tf.sigmoid(tf.stack(self.unstack_guide_hist, axis=1))
+        self.unstack_hist = list()
+        for i in range(self.hist_len*2):
+            self.unstack_hist.append(self.hist_cnn('CNN', i))
+        serial_hist = tf.sigmoid(tf.stack(self.unstack_hist, axis=1))
 
-        with tf.variable_scope("serial_tourist"):
+        with tf.variable_scope("serial"):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, tourist_hist, dtype=tf.float32)
+            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, serial_hist, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
-            tourist_output = tf.concat([final_fw, final_bw], axis=1)
+            output = tf.concat([final_fw, final_bw], axis=1)
+            return output
 
-        with tf.variable_scope("serial_guide"):
-            lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, guide_hist, dtype=tf.float32)
-            final_fw = tf.concat(final_states[0], axis=1)
-            final_bw = tf.concat(final_states[1], axis=1)
-            guide_output = tf.concat([final_fw, final_bw], axis=1)
         
         # dummy workaround
         tourist_hist = tourist_output
