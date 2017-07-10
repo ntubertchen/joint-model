@@ -79,11 +79,8 @@ class slu_model(object):
             return h_drop
 
     def build_graph(self):
-        #output = self.current_nl_cnn()
         output = self.current_nl_biRNN()
-        history_summary = tf.layers.dense(inputs=output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
-        final_output = self.nl_biRNN(history_summary)
-        self.intent_output = tf.layers.dense(inputs=final_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+        self.intent_output = tf.layers.dense(inputs=output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
