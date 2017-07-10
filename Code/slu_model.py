@@ -42,9 +42,9 @@ class slu_model(object):
         with tf.variable_scope(scope):
             if idx != 0:
                 tf.get_variable_scope().reuse_variables()
-            if scope == "CNN_t":
+            if scope == "cnn_t":
                 input_nl = tf.unstack(self.history_nl, axis=1)[idx]
-            elif scope == "CNN_g":
+            elif scope == "cnn_g":
                 input_nl = tf.unstack(self.history_nl, axis=1)[idx+self.hist_len]
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, input_nl)
             pooled_outputs = list()
@@ -99,10 +99,11 @@ class slu_model(object):
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
 
-    def attention_biRNN(self, scope, inputs):
-        with tf.variable_scope(scope):
+    def current_nl_biRNN(self):
+        with tf.variable_scope("current_nl_birnn"):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
+            inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.current_nl)
             _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
@@ -113,12 +114,29 @@ class slu_model(object):
         self.unstack_hist_tourist = list()
         self.unstack_hist_guide = list()
         for i in range(self.hist_len):
-            self.unstack_hist_tourist.append(self.hist_cnn('CNN_t', i))
-            self.unstack_hist_guide.append(self.hist_cnn('CNN_g', i))
+            self.unstack_hist_tourist.append(self.hist_cnn('cnn_t', i))
+            self.unstack_hist_guide.append(self.hist_cnn('cnn_g', i))
+        current_nl_vec = self.current_nl_biRNN()
+        # tourist part
+        tourist_dense= list()
+        for i in range(self.hist_len):
+            temp_concat = tf.concat([self.unstack_hist_tourist[i], current_nl_vec], axis=1)
+            temp_output = tf.layers.dense(inputs=temp_concat, units=1, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+            tourist_dense.append(temp_output)
+        guide_dense = list()
+        for i in range(self.hist_len):
+            temp_concat = tf.concat([self.unstack_hist_guide[i], current_nl_vec], axis=1)
+            temp_output = tf.layers.dense(inputs=temp_concat, units=1, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+            guide_dense.append(temp_output)
 
-        serial_hist_tourist = tf.sigmoid(tf.stack(self.unstack_hist_tourist, axis=1))
-        serial_hist_guide = tf.sigmoid(tf.stack(self.unstack_hist_guide, axis=1))
-
+        tourist_weight = tf.nn.softmax(tf.squeeze(tf.stack(tourist_dense, axis=1), axis=2))
+        guide_weight = tf.nn.softmax(tf.squeeze(tf.stack(guide_dense, axis=1), axis=2))
+        weighted_tourist = tf.multiply(tf.stack(self.unstack_hist_tourist, axis=1), tf.expand_dims(tourist_weight, axis=2))
+        weighted_guide = tf.multiply(tf.stack(self.unstack_hist_guide, axis=1), tf.expand_dims(guide_weight, axis=2))
+        
+        serial_hist_tourist = tf.sigmoid(weighted_tourist)
+        serial_hist_guide = tf.sigmoid(weighted_guide)
+        
         with tf.variable_scope("serial_tourist"):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
@@ -134,8 +152,9 @@ class slu_model(object):
             final_fw = tf.concat(final_states[0], axis=1)
             final_bw = tf.concat(final_states[1], axis=1)
             guide_output = tf.concat([final_fw, final_bw], axis=1)
+
         return tf.concat([tourist_output, guide_output], axis=1)
-        
+        '''
         # dummy workaround
         tourist_hist = tourist_output
         guide_hist = guide_output
@@ -182,7 +201,7 @@ class slu_model(object):
                 #rnn_guide_attention = self.attention_biRNN("guide_attention", tf.stack(guide_attention, axis=1))
                 sentence_attention = tf.concat([tourist_attention, guide_attention], axis=1)
                 return sentence_attention
-
+        '''
     def build_graph(self):
         concat_output = self.attention()
         history_summary = tf.layers.dense(inputs=concat_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)

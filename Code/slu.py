@@ -48,10 +48,11 @@ def process_batch(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id,
 
     # target part
     for i in batch_intent:
-        ground_truth.append(one_hot([i[-1][0]]+[attri for attri in i[-1][1]], "mix"))
+        ground_truth.append(one_hot([i[-2][0]]+[attri for attri in i[-2][1]], "mix"))
 
     # current nl part
     for i, t in zip(batch_nl, batch_talker):
+        '''
         if t == "Tourist":
             nl = i[hist_len*2-1]
         elif t == "Guide":
@@ -60,6 +61,8 @@ def process_batch(batch_nl, batch_intent, max_seq_len, intent_pad_id, nl_pad_id,
             print (t)
             print ("no such role!")
             exit(1)
+        '''
+        nl = i[hist_len*2]
         current_nl.append(nl+[nl_pad_id for _ in range(max_seq_len-len(nl))])
         current_nl_len.append(len(nl))
 
@@ -83,12 +86,12 @@ def calculate_score(predict_output, ground_truth, talker=None):
     test_talker = open('Data/test/talker', 'r').readlines()
     ret_pred_outputs = list()
     ret_ground_truth = list()
-    talker_cnt = 0
+    talker_cnt = -1
     for pred, label in zip(predict_output, ground_truth):
         talker_cnt += 1
         if len(test_talker) <= talker_cnt:
             talker_cnt = len(test_talker) - 1
-        if test_talker[talker_cnt].strip('\n') == talker:
+        if test_talker[talker_cnt].strip('\n') != talker and talker != None:
             continue
         pred_act = pred[:5] # first 5 is act
         pred_attribute = pred[5:] # remaining is attribute
@@ -108,7 +111,7 @@ if __name__ == '__main__':
     epoch = 30
     batch_size = 256
     use_attention = "role"
-    use_mid_loss = False
+    use_mid_loss = True
 
     data = slu_data()
     total_intent = data.total_intent
