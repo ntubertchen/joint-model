@@ -10,10 +10,19 @@ class slu_data():
         train_intent = open('Data/train/intent', 'r')
         valid_intent = open('Data/valid/intent', 'r')
         test_intent = open('Data/test/intent', 'r')
+        train_talker = open('Data/train/talker', 'r')
+        train_info = open('Data/train/info', 'r')
+        test_info = open('Data/test/info', 'r')
+        self.train_dist = self.read_info(train_info)
+        self.test_dist = self.read_info(test_info)
         self.intent_act_dict = None
         self.intent_attri_dict = None
         self.total_intent = None
         self.total_word = None
+        self.train_tourist_indices = list()
+        self.train_guide_indices = list()
+        self.train_guide_indices = list()
+        self.get_talker(train_talker)
         self.train_intent = self.convertintent2id(train_intent)
         self.valid_intent = self.convertintent2id(valid_intent)
         self.test_intent = self.convertintent2id(test_intent)
@@ -34,36 +43,55 @@ class slu_data():
         self.train_batch_indices = [i for i in range(len(self.train_data))]
         self.valid_batch_indices = [i for i in range(len(self.valid_data))]
         self.test_indices = [i for i in range(len(self.test_data))] # no shuffle
-        #nl, intent = self.get_train_batch()
-        #self.get_valid_batch()
-        #self.get_test_batch()
+    
+    def read_info(self, data_file):
+        ret_dist = list()
+        for line in data_file:
+            dist = map(lambda x:float(x.strip(' ').lstrip(' ')), line.split("***next***")[:-1])
+            ret_dist.append(dist)
+        return ret_dist
 
-    def get_all_train(self):
-        indices = [i for i in range(len(self.train_data))]
-        ret_nl_batch = list()
-        ret_intent_batch = list()
-        for batch_idx in indices:
-            nl_sentences = self.train_data[batch_idx]
-            intent = self.train_intent[batch_idx]
-            ret_nl_batch.append(nl_sentences)
-            ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+    def get_talker(self, data_file):
+        self.all_talker = list()
+        for idx, line in enumerate(data_file):
+            talker = line.strip('\n')
+            self.all_talker.append(talker)
+            if talker == 'Tourist':
+                self.train_tourist_indices.append(idx)
+            elif talker == 'Guide':
+                self.train_guide_indices.append(idx)
+            else:
+                print "cannot be here!"
+                exit(1)
 
-    def get_train_batch(self, batch_size):
+    def get_train_batch(self, batch_size, role=None):
         """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
-        random.shuffle(self.train_batch_indices)
-        batch_indices = self.train_batch_indices[:batch_size]
+        if role == None:
+            random.shuffle(self.train_batch_indices)
+            batch_indices = self.train_batch_indices[:batch_size]
+        elif role == 'Tourist':
+            random.shuffle(self.train_tourist_indices)
+            batch_indices = self.train_tourist_indices[:batch_size]
+        elif role == 'Guide':
+            random.shuffle(self.train_guide_indices)
+            batch_indices = self.train_guide_indices[:batch_size]
+
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_dist_batch = list()
+        ret_talker = list()
         for batch_idx in batch_indices:
             nl_sentences = self.train_data[batch_idx]
             intent = self.train_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            dist = self.train_dist[batch_idx]
+            ret_dist_batch.append(dist)
+            talker = self.all_talker[batch_idx]
+            ret_talker.append(talker)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
 
     def get_valid_batch(self, batch_size):
-        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         random.shuffle(self.valid_batch_indices)
         batch_indices = self.valid_batch_indices[:batch_size]
         ret_nl_batch = list()
@@ -76,16 +104,21 @@ class slu_data():
         return ret_nl_batch, ret_intent_batch
 
     def get_test_batch(self):
-        """ returns a 3-dim list, where each row is a batch contains histories from tourist and guide"""
         batch_indices = self.test_indices
         ret_nl_batch = list()
         ret_intent_batch = list()
+        ret_dist_batch = list()
+        ret_talker = list()
         for batch_idx in batch_indices:
             nl_sentences = self.test_data[batch_idx]
             intent = self.test_intent[batch_idx]
             ret_nl_batch.append(nl_sentences)
             ret_intent_batch.append(intent)
-        return ret_nl_batch, ret_intent_batch
+            dist = self.test_dist[batch_idx]
+            ret_dist_batch.append(dist)
+            talker = self.all_talker[batch_idx]
+            ret_talker.append(talker)
+        return ret_nl_batch, ret_intent_batch, ret_dist_batch, ret_talker
 
     def convertintent2id(self, data_file):
         intent_corpus = list()
@@ -93,7 +126,10 @@ class slu_data():
             temp_intent = line.strip('\n').split('***next***')[:-1]
             temp_intent = map(lambda x:x.strip(' ').lstrip(' '), temp_intent)
             intent_corpus.append(temp_intent)
-        
+        # post processing
+        for idx, intent in enumerate(intent_corpus[:-1]):
+            intent_corpus[idx] += [intent_corpus[idx+1][-1]]
+        intent_corpus[-1] += [intent_corpus[-1][-1]]
         if self.intent_act_dict is None or self.intent_attri_dict is None:
             assert self.intent_act_dict is None and self.intent_attri_dict is None
             # build intent dict
@@ -112,12 +148,6 @@ class slu_data():
             self.intent_act_dict = act_dict
             self.intent_attri_dict = attri_dict
             self.total_intent = len(act_dict)+len(attri_dict)
-            # construct whole dict for reconstructing intent output
-            self.whole_dict = defaultdict()
-            for k, v in act_dict.iteritems():
-                self.whole_dict[v] = k
-            for k, v in attri_dict.iteritems():
-                self.whole_dict[v+len(act_dict)] = k
         
         # convert act and attributes to id
         ret_intent = list()
@@ -158,7 +188,10 @@ class slu_data():
             temp_nl = line.strip('\n').split('***next***')[:-1] # temp_nl contains many sentences
             nl = self.clean_nl(temp_nl)
             nl_corpus.append(nl)
-        
+        # post-processing the nl_corpus
+        for idx, nl in enumerate(nl_corpus[:-1]):
+            nl_corpus[idx] += [nl_corpus[idx+1][-1]]
+        nl_corpus[-1] += [nl_corpus[-1][-1]]
         # start from idx 1, since 0 is for <unk>
         data = list()
         for nl_sentences in nl_corpus:
