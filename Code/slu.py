@@ -109,7 +109,7 @@ if __name__ == '__main__':
     sess = tf.Session(config=config)
     max_seq_len = 60
     epoch = 30
-    batch_size = 256
+    batch_size = 64
     # these 2 are useless in no history setting
     use_attention = "role"
     use_mid_loss = True

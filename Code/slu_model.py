@@ -4,7 +4,7 @@ from tensorflow.contrib import rnn
 
 class slu_model(object):
     def __init__(self, max_seq_len, intent_dim, use_attention, use_mid_loss):
-        self.hidden_size = 128
+        self.hidden_size = 64
         self.intent_dim = intent_dim # one hot encoding
         self.embedding_dim = 200 # read from glove
         self.total_word = 400002 # total word embedding vectors
@@ -28,6 +28,7 @@ class slu_model(object):
 
     def add_variables(self):
         self.embedding_matrix = tf.Variable(tf.truncated_normal([self.total_word, self.embedding_dim]), dtype=tf.float32, name="glove_embedding")
+        self.attention_word_vector = tf.Variable(tf.truncated_normal([1, 1, 2*self.hidden_size]), dtype=tf.float32)
 
     def add_placeholders(self):
         self.read_embedding_matrix = tf.placeholder(tf.float32, [self.total_word, self.embedding_dim])
@@ -51,16 +52,17 @@ class slu_model(object):
             final_bw = tf.concat(final_states[1], axis=1)
             outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
             return outputs
+
     def current_nl_biRNN(self):
         with tf.variable_scope("current_nl_birnn"):
             lstm_fw_cell = rnn.BasicLSTMCell(self.hidden_size)
             lstm_bw_cell = rnn.BasicLSTMCell(self.hidden_size)
             inputs = tf.nn.embedding_lookup(self.embedding_matrix, self.current_nl)
-            _, final_states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
-            final_fw = tf.concat(final_states[0], axis=1)
-            final_bw = tf.concat(final_states[1], axis=1)
-            outputs = tf.concat([final_fw, final_bw], axis=1) # concatenate forward and backward final states
-            return outputs
+            outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+            fw_outputs = outputs[0]
+            bw_outputs = tf.reverse(outputs[1], [1])
+            final_output = tf.concat([fw_outputs, bw_outputs], axis=2)
+            return final_output
     
     def current_nl_cnn(self):
         with tf.variable_scope("current_nl_cnn"):
@@ -78,9 +80,17 @@ class slu_model(object):
             h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
             return h_drop
 
+    def word_level_attention(self, hidden):
+        with tf.variable_scope("word_level_attention"):
+            output = tf.layers.dense(inputs=hidden, units=self.hidden_size*2, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+            weight = tf.nn.softmax(tf.reduce_sum(tf.multiply(output, self.attention_word_vector), axis=2))
+            ret = tf.reduce_sum(tf.multiply(tf.expand_dims(weight, axis=2), hidden), axis=1)
+            return ret
+
     def build_graph(self):
         output = self.current_nl_biRNN()
-        self.intent_output = tf.layers.dense(inputs=output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
+        attention_output = self.word_level_attention(output)
+        self.intent_output = tf.layers.dense(inputs=attention_output, units=self.intent_dim, kernel_initializer=tf.random_normal_initializer, bias_initializer=tf.random_normal_initializer)
 
     def add_loss(self):
         self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.labels, logits=self.intent_output))
